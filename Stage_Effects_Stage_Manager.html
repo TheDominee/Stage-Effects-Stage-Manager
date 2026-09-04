@@ -570,7 +570,7 @@
   </main>
 
   <footer class="hint">
-    <kbd>Space</kbd> start/pause &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>F</kbd> fullscreen this window &nbsp;
+    <kbd>Space</kbd> start/pause &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>F</kbd> fullscreen this window &nbsp; <kbd>&larr;</kbd><kbd>&rarr;</kbd> previous/next cue &nbsp;
     Drag the Extended Display window onto your second screen, then press <kbd>F11</kbd> for true full screen.
     <div class="footer-about">Stage Manager Countdown Timer &mdash; built for Stage Effects Group (Pty) Ltd. Runs entirely offline in this browser tab.</div>
     <div class="footer-about">To share a broadcast: the link is already set up &mdash; just click Start Broadcasting, then copy the link that appears just below the buttons and send it (WhatsApp, email, whatever's easiest). Viewers just open it, no login or app needed. Every field in that box is still editable if you want your own link instead. Running several shows on different computers? Each one generates its own separate link automatically, so just copy the one shown on that computer.</div>
@@ -692,7 +692,20 @@
                     one-time free Firebase project + rules setup).
      Either way, viewer.html still needs to be hosted somewhere with a public URL --
      that part can't be automated from here. */
-  function randomRoomId(){ return 'show-' + Math.random().toString(36).slice(2,8); }
+  function randomRoomId(){
+    // Longer, harder-to-guess room id. The Firebase rules only grant access to
+    // whoever knows the exact room id (see the ".read"/".write" scoped to
+    // "broadcasts/$room" in the database rules), so this id is effectively the
+    // broadcast's password - the longer and more random, the better.
+    if(window.crypto && window.crypto.getRandomValues){
+      var bytes = new Uint8Array(10);
+      window.crypto.getRandomValues(bytes);
+      var s = '';
+      for(var i=0;i<bytes.length;i++){ s += bytes[i].toString(36); }
+      return 'show-' + s.slice(0, 14);
+    }
+    return 'show-' + Math.random().toString(36).slice(2,8) + Math.random().toString(36).slice(2,8);
+  }
   var bcSettings = loadJSON('sm_broadcast_settings', null);
   if(!bcSettings){
     // Defaults to Stage Effects' own hosted viewer page and Firebase project, so
@@ -1249,6 +1262,13 @@
   var KIND_PALETTE = ['#4f86e0','#c65fd6','#e0a23f','#e0556f','#2ec4c4','#8a9a5b','#dd8a3f','#6f7fe0'];
   function nextKindColor(){ return KIND_PALETTE[customKinds.length % KIND_PALETTE.length]; }
   function findCustomKind(id){ for(var i=0;i<customKinds.length;i++){ if(customKinds[i].id===id) return customKinds[i]; } return null; }
+
+  // ===== SYNC BLOCK START: isCustomType / hexToRgba / applyKindStyle / clearKindStyle =====
+  // This exact block also lives in viewer_template.html (viewer has no customKinds
+  // registry of its own - it just renders whatever color/label the control panel
+  // broadcasts). If you change the logic here, copy the same change over there too,
+  // and vice versa, so a cue's color looks identical on the control panel and on
+  // the public viewer.
   function isCustomType(type){ return !!type && type !== 'performance' && type !== 'changeover' && type !== 'manual'; }
   function hexToRgba(hex, a){
     var h = (hex || '#8890a8').replace('#','');
@@ -1265,6 +1285,7 @@
     elm.style.color = '';
     elm.style.border = '';
   }
+  // ===== SYNC BLOCK END =====
   function renderCustomKindTabs(){
     el.customKindTabs.innerHTML = '';
     customKinds.forEach(function(k){
@@ -1874,13 +1895,19 @@
   el.saveShowBtn.addEventListener('click', function(){
     var data = {
       kind: 'stage-effects-show',
-      version: 1,
+      version: 2,
       savedAt: new Date().toISOString(),
       showName: el.showName.value || '',
       showStartTime: el.showStartTime.value || '',
       countMode: countMode,
+      customKinds: customKinds.map(function(k){ return { id: k.id, label: k.label, color: k.color }; }),
       cueList: cueList.map(function(c){
-        return { id: c.id, type: c.type, name: c.name, duration: c.duration };
+        var out = { id: c.id, type: c.type, name: c.name, duration: c.duration };
+        if(isCustomType(c.type)){
+          out.kindLabel = c.kindLabel || 'Custom';
+          out.kindColor = c.kindColor || '#8890a8';
+        }
+        return out;
       })
     };
     var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1922,13 +1949,37 @@
       upRunStarted = false;
       alarmActive = false;
 
+      // Bring in any custom cue-type tabs the file references, so a show built on
+      // another computer keeps its custom colors/labels here too. Existing local
+      // tabs with a matching id are left alone (their color stays whatever this
+      // computer already has for it).
+      if(Array.isArray(data.customKinds)){
+        data.customKinds.forEach(function(k){
+          if(!k || typeof k.id !== 'string' || typeof k.label !== 'string') return;
+          if(!findCustomKind(k.id)){
+            customKinds.push({ id: k.id, label: k.label, color: (typeof k.color === 'string' && k.color) || nextKindColor() });
+          }
+        });
+        saveJSON('sm_custom_kinds', customKinds);
+        renderCustomKindTabs();
+      }
+
       cueList = data.cueList.map(function(c){
-        return {
+        var type = 'performance';
+        if(c && c.type === 'changeover') type = 'changeover';
+        else if(c && isCustomType(c.type)) type = c.type;
+        var cue = {
           id: (c && typeof c.id === 'string' && c.id) || uid(),
-          type: (c && c.type === 'changeover') ? 'changeover' : 'performance',
+          type: type,
           name: (c && typeof c.name === 'string' && c.name) || 'Untitled',
           duration: Math.max(0, parseInt(c && c.duration, 10) || 0)
         };
+        if(isCustomType(type)){
+          var k = findCustomKind(type);
+          cue.kindLabel = (c && typeof c.kindLabel === 'string' && c.kindLabel) || (k ? k.label : 'Custom');
+          cue.kindColor = (c && typeof c.kindColor === 'string' && c.kindColor) || (k ? k.color : '#8890a8');
+        }
+        return cue;
       });
       if(typeof data.showName === 'string') el.showName.value = data.showName;
       if(typeof data.showStartTime === 'string') el.showStartTime.value = data.showStartTime;
@@ -1973,6 +2024,19 @@
     else if(e.key === 'f' || e.key === 'F'){
       if(document.fullscreenElement){ document.exitFullscreen(); }
       else { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }
+    }
+    else if(e.key === 'ArrowRight' || e.key === 'ArrowDown'){
+      e.preventDefault();
+      if(!cueList.length) return;
+      var idx = currentCueId ? findCueIndex(currentCueId) : -1;
+      var next = idx >= 0 ? idx + 1 : 0;
+      if(next < cueList.length) loadCue(cueList[next].id);
+    }
+    else if(e.key === 'ArrowLeft' || e.key === 'ArrowUp'){
+      e.preventDefault();
+      if(!cueList.length) return;
+      var pIdx = currentCueId ? findCueIndex(currentCueId) : -1;
+      if(pIdx > 0) loadCue(cueList[pIdx - 1].id);
     }
   });
 

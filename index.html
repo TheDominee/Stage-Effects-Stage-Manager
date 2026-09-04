@@ -284,6 +284,12 @@
   }
 
   /* ---------------- custom cue types (mirrors control-panel logic) ---------------- */
+  // ===== SYNC BLOCK START: isCustomType / hexToRgba / applyKindStyle / clearKindStyle =====
+  // This exact block also lives in template.html (the control panel). The viewer has
+  // no customKinds registry of its own - it just renders whatever color/label the
+  // control panel broadcasts in cueTypeColor/cueTypeLabel. If you change the logic
+  // here, copy the same change over there too, and vice versa, so a cue's color looks
+  // identical on the control panel and on this public viewer.
   function isCustomType(type){ return !!type && type !== 'performance' && type !== 'changeover' && type !== 'manual'; }
   function hexToRgba(hex, a){
     var h = (hex || '#8890a8').replace('#','');
@@ -300,6 +306,7 @@
     elm.style.color = '';
     elm.style.border = '';
   }
+  // ===== SYNC BLOCK END =====
 
   function render(){
     if(!haveSettings()) return;
