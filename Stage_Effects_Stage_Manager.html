@@ -330,6 +330,19 @@
   table.cue-table input.row-name:hover, table.cue-table input.row-name:focus{
     border-color:var(--hairline);background:var(--input-bg);
   }
+  table.cue-table td.notes-cell{min-width:150px;}
+  table.cue-table textarea.row-notes{
+    background:transparent;border:1px solid transparent;color:var(--text-dim);
+    padding:3px 4px;border-radius:4px;width:100%;font-size:12.5px;font-style:italic;font-family:inherit;
+    resize:none;overflow:hidden;white-space:pre-wrap;word-break:break-word;display:block;
+    min-height:22px;line-height:1.35;box-sizing:border-box;
+  }
+  table.cue-table textarea.row-notes:hover, table.cue-table textarea.row-notes:focus{
+    border-color:var(--hairline);background:var(--input-bg);color:var(--text);font-style:normal;
+  }
+  table.cue-table .notes-print-row{display:flex;align-items:center;gap:5px;margin-top:3px;font-size:10.5px;color:var(--text-dim);}
+  table.cue-table .notes-print-row input[type="checkbox"]{margin:0;cursor:pointer;}
+  table.cue-table .notes-print-row label{cursor:pointer;user-select:none;}
   table.cue-table input.row-dur{
     width:36px;background:transparent;border:1px solid transparent;color:var(--text);
     text-align:center;font-family:var(--mono);border-radius:4px;padding:3px 0;
@@ -426,6 +439,7 @@
               <th style="width:16px;"></th>
               <th>Type</th>
               <th>Name</th>
+              <th style="width:150px;" title="Visible only to you here and never broadcast or shown on the extended display — tick &quot;Print&quot; to include a note on the printed run sheet">Notes</th>
               <th>Duration</th>
               <th>Sched.</th>
               <th style="width:96px;"></th>
@@ -1208,6 +1222,35 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       nameInput.addEventListener('change', function(){ c.name = nameInput.value; persist(); if(c.id===currentCueId){ el.actName.value = c.name; updatePresenter(); } });
       tdName.appendChild(nameInput);
 
+      var tdNotes = document.createElement('td');
+      tdNotes.className = 'notes-cell';
+      var notesInput = document.createElement('textarea');
+      notesInput.className = 'row-notes';
+      notesInput.rows = 1;
+      notesInput.value = c.notes || '';
+      notesInput.placeholder = 'Notes for you…';
+      notesInput.spellcheck = false;
+      notesInput.title = 'Visible only to you here — not broadcast, not on the extended display. Ticking "Print" below adds it to the printed run sheet.';
+      function growNotes(){ notesInput.style.height = 'auto'; notesInput.style.height = notesInput.scrollHeight + 'px'; }
+      notesInput.addEventListener('input', growNotes);
+      notesInput.addEventListener('change', function(){ c.notes = notesInput.value; persist(); });
+      tdNotes.appendChild(notesInput);
+
+      var printRow = document.createElement('div');
+      printRow.className = 'notes-print-row';
+      var printCheck = document.createElement('input');
+      printCheck.type = 'checkbox';
+      printCheck.id = 'notesPrint_' + c.id;
+      printCheck.checked = !!c.printNote;
+      printCheck.addEventListener('change', function(){ c.printNote = printCheck.checked; persist(); });
+      var printLabel = document.createElement('label');
+      printLabel.htmlFor = printCheck.id;
+      printLabel.textContent = 'Print';
+      printLabel.title = 'Include this note on the printed run sheet';
+      printRow.appendChild(printCheck);
+      printRow.appendChild(printLabel);
+      tdNotes.appendChild(printRow);
+
       var tdDur = document.createElement('td');
       var mm = Math.floor(c.duration/60), ss = c.duration%60;
       var durWrap = document.createElement('span');
@@ -1262,10 +1305,12 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       tr.appendChild(tdIdx);
       tr.appendChild(tdType);
       tr.appendChild(tdName);
+      tr.appendChild(tdNotes);
       tr.appendChild(tdDur);
       tr.appendChild(tdSched);
       tr.appendChild(tdActions);
       el.cueBody.appendChild(tr);
+      growNotes(); // measure scrollHeight now that the textarea is attached to the document
     });
 
     updateNextUpLine();
@@ -1662,6 +1707,10 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     '#countdown.danger{color:#fff;}'+
     '#nextLine{margin-top:26px;font-size:24px;color:var(--p-dim);letter-spacing:.5px;}'+
     '#nextLine b{color:var(--p-gold);font-weight:700;}'+
+    '#nextLine .next-type{font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-right:4px;}'+
+    '#nextLine .next-type.nt-performance{color:var(--p-perf-text);}'+
+    '#nextLine .next-type.nt-changeover{color:var(--p-chg-text);}'+
+    '#nextLine .next-type.nt-manual{color:var(--p-man-text);}'+
     '#overrunTag{margin-top:10px;font-size:22px;font-weight:700;letter-spacing:4px;color:#fff;text-transform:uppercase;opacity:0;}'+
     '#overrunTag.show{opacity:1;}'+
     '@keyframes flashRed{0%,100%{background-color:#000000;}50%{background-color:#ff1a1a;}}'+
@@ -1732,6 +1781,17 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     }, 1000);
   }
 
+  // Display label for a cue's type on the extended (presenter) screen — built-in
+  // "performance" cues read as "Act", so the show's actual language shows up
+  // instead of the generic word "Performance". Custom cue types already carry
+  // their own label (e.g. "Sound Check") and are used as-is.
+  function presenterTypeLabel(type, cue){
+    if(type === 'changeover') return 'Changeover';
+    if(type === 'performance') return 'Act';
+    if(isCustomType(type)) return (cue && cue.kindLabel) || 'Custom';
+    return 'Manual';
+  }
+
   function updatePresenter(){
     if(!presenterWin || presenterWin.closed) return;
     var d;
@@ -1800,7 +1860,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       } else {
         clearKindStyle(badgeEl);
         badgeEl.className = 'b-' + type;
-        badgeEl.textContent = type === 'changeover' ? 'Changeover' : (type === 'performance' ? 'Performance' : 'Manual');
+        badgeEl.textContent = presenterTypeLabel(type, curCue);
       }
       actEl.textContent = el.actName.value || '';
     } else {
@@ -1844,7 +1904,14 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     } else if(cueList.length){
       nextC = cueList[0];
     }
-    d.getElementById('nextLine').innerHTML = nextC ? ('NEXT &nbsp;—&nbsp; <b>'+escapeHtml(nextC.name)+'</b> &nbsp;('+fmt(nextC.duration)+')') : '';
+    if(nextC){
+      var nextLabel = presenterTypeLabel(nextC.type, nextC);
+      var nextTypeClass = isCustomType(nextC.type) ? '' : ('nt-' + nextC.type);
+      var nextTypeStyle = isCustomType(nextC.type) ? (' style="color:'+(nextC.kindColor || '#8890a8')+';"') : '';
+      d.getElementById('nextLine').innerHTML = 'NEXT &nbsp;—&nbsp; <span class="next-type '+nextTypeClass+'"'+nextTypeStyle+'>'+escapeHtml(nextLabel)+':</span> <b>'+escapeHtml(nextC.name)+'</b> &nbsp;('+fmt(nextC.duration)+')';
+    } else {
+      d.getElementById('nextLine').innerHTML = '';
+    }
   }
 
   /* ---------------- custom full-screen message ---------------- */
@@ -1934,7 +2001,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   function buildShowSaveData(){
     return {
       kind: 'stage-effects-show',
-      version: 3,
+      version: 4,
       savedAt: new Date().toISOString(),
       showName: el.showName.value || '',
       showVenue: el.showVenue.value || '',
@@ -1944,7 +2011,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       countMode: countMode,
       customKinds: customKinds.map(function(k){ return { id: k.id, label: k.label, color: k.color }; }),
       cueList: cueList.map(function(c){
-        var out = { id: c.id, type: c.type, name: c.name, duration: c.duration };
+        var out = { id: c.id, type: c.type, name: c.name, duration: c.duration, notes: c.notes || '', printNote: !!c.printNote };
         if(isCustomType(c.type)){
           out.kindLabel = c.kindLabel || 'Custom';
           out.kindColor = c.kindColor || '#8890a8';
@@ -1975,17 +2042,17 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       ['Show Start', data.showStartTime || ''],
       ['Curfew', data.showCurfew || ''],
       [],
-      ['Type', 'Name', 'Minutes', 'Seconds', 'Notes', 'Color']
+      ['Type', 'Name', 'Minutes', 'Seconds', 'Notes', 'Print Note', 'Color']
     ];
     data.cueList.forEach(function(c){
       var typeLabel = c.type === 'performance' ? 'Performance' : c.type === 'changeover' ? 'Changeover' : (c.kindLabel || 'Custom');
       var mins = Math.floor((c.duration || 0) / 60);
       var secs = (c.duration || 0) % 60;
       var color = isCustomType(c.type) ? (c.kindColor || '') : '';
-      aoa.push([typeLabel, c.name || '', mins, secs, '', color]);
+      aoa.push([typeLabel, c.name || '', mins, secs, c.notes || '', c.printNote ? 'Yes' : '', color]);
     });
     var ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [{ wch: 16 }, { wch: 34 }, { wch: 9 }, { wch: 9 }, { wch: 24 }, { wch: 10 }];
+    ws['!cols'] = [{ wch: 16 }, { wch: 34 }, { wch: 9 }, { wch: 9 }, { wch: 24 }, { wch: 11 }, { wch: 10 }];
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Running Order');
     return wb;
@@ -2051,7 +2118,9 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         id: (c && typeof c.id === 'string' && c.id) || uid(),
         type: type,
         name: (c && typeof c.name === 'string' && c.name) || 'Untitled',
-        duration: Math.max(0, parseInt(c && c.duration, 10) || 0)
+        duration: Math.max(0, parseInt(c && c.duration, 10) || 0),
+        notes: (c && typeof c.notes === 'string' && c.notes) || '',
+        printNote: !!(c && c.printNote)
       };
       if(isCustomType(type)){
         var k = findCustomKind(type);
@@ -2156,7 +2225,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     function cellStr(v){ return (v === null || v === undefined) ? '' : String(v).trim(); }
 
     var headerRowIdx = -1;
-    var col = { type:-1, name:-1, min:-1, sec:-1, color:-1 };
+    var col = { type:-1, name:-1, min:-1, sec:-1, color:-1, notes:-1, print:-1 };
     for(var i=0;i<rows.length;i++){
       var row = rows[i] || [];
       var lower = row.map(function(c){ return cellStr(c).toLowerCase(); });
@@ -2169,6 +2238,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
           if(col.min === -1 && lower[j].indexOf('min') === 0) col.min = j;
           if(col.sec === -1 && lower[j].indexOf('sec') === 0) col.sec = j;
           if(col.color === -1 && lower[j].indexOf('color') === 0) col.color = j;
+          if(col.print === -1 && lower[j].indexOf('print') === 0) col.print = j;
+          if(col.notes === -1 && lower[j].indexOf('note') === 0) col.notes = j;
         }
         break;
       }
@@ -2213,7 +2284,10 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var minutes = col.min !== -1 ? numFromCell(dr[col.min]) : 0;
       var seconds = col.sec !== -1 ? numFromCell(dr[col.sec]) : 0;
       var duration = Math.max(0, Math.round(minutes*60 + seconds));
-      var cue = { id: uid(), type: type, name: name.slice(0,80), duration: duration };
+      var notes = col.notes !== -1 ? cellStr(dr[col.notes]) : '';
+      var printRaw = col.print !== -1 ? cellStr(dr[col.print]).toLowerCase() : '';
+      var printNote = printRaw === 'yes' || printRaw === 'y' || printRaw === 'true' || printRaw === '1';
+      var cue = { id: uid(), type: type, name: name.slice(0,80), duration: duration, notes: notes.slice(0,300), printNote: printNote };
       if(isCustomType(type)){
         cue.kindLabel = kindByLabel[typeLower].label;
         cue.kindColor = kindByLabel[typeLower].color;
@@ -2227,6 +2301,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   function printRunningOrder(){
     var sched = computeSchedule();
     var totalSec = cueList.reduce(function(a,c){ return a + c.duration; }, 0);
+    var hasPrintNotes = cueList.some(function(c){ return c.printNote && (c.notes || '').trim(); });
 
     var rowsHtml = cueList.map(function(c, idx){
       var typeLabel, badgeColor;
@@ -2238,10 +2313,12 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         typeLabel = 'Performance'; badgeColor = '#2f5fa8';
       }
       var badgeBg = hexToRgba(badgeColor, 0.14);
+      var notesCell = hasPrintNotes ? ('<td class="notes">'+(c.printNote && c.notes ? escapeHtml(c.notes) : '')+'</td>') : '';
       return '<tr>'+
         '<td class="idx">'+(idx+1)+'</td>'+
         '<td><span class="type-badge" style="background:'+badgeBg+';color:'+badgeColor+';border-color:'+badgeColor+'">'+escapeHtml(typeLabel)+'</span></td>'+
         '<td class="name">'+escapeHtml(c.name || '')+'</td>'+
+        notesCell+
         '<td class="sched">'+escapeHtml(sched[idx] || '—')+'</td>'+
         '<td class="dur">'+fmt(c.duration)+'</td>'+
       '</tr>';
@@ -2291,6 +2368,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       'tbody tr:hover{}'+
       'td.idx{color:#999;width:26px;font-weight:700;}'+
       'td.name{font-weight:600;color:#1a1f2e;}'+
+      'td.notes{color:#555;font-size:12px;font-style:italic;max-width:240px;}'+
       'td.sched,td.dur{font-family:"Courier New",monospace;white-space:nowrap;}'+
       'td.dur{text-align:right;font-weight:700;color:#16213F;}'+
       '.type-badge{display:inline-block;border:1px solid;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;'+
@@ -2312,9 +2390,9 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     '</div>'+
     (metaHtml ? '<div class="meta-row">'+metaHtml+'</div>' : '')+
     '<div class="table-wrap">'+
-    '<table><thead><tr><th></th><th>Type</th><th>Name</th><th>Sched.</th><th>Duration</th></tr></thead><tbody>'+
+    '<table><thead><tr><th></th><th>Type</th><th>Name</th>'+(hasPrintNotes?'<th>Notes</th>':'')+'<th>Sched.</th><th>Duration</th></tr></thead><tbody>'+
     rowsHtml+
-    '<tr class="total-row"><td></td><td></td><td class="name">Total running time</td><td></td><td class="dur">'+fmt(totalSec)+'</td></tr>'+
+    '<tr class="total-row"><td></td><td></td><td class="name">Total running time</td>'+(hasPrintNotes?'<td></td>':'')+'<td></td><td class="dur">'+fmt(totalSec)+'</td></tr>'+
     '</tbody></table>'+
     '</div>'+
     '<div class="footer"><span class="stamp">Subject to Production Call</span></div>'+
