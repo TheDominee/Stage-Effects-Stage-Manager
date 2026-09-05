@@ -219,7 +219,7 @@
 
   // Per-build flag: true only for the Crew broadcast link build — the public
   // audience viewer never gets the chat UI at all (see the removal below).
-  var ENABLE_CREW_CHAT = false;
+  var ENABLE_CREW_CHAT = true;
 
   function escapeHtml(s){
     var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML;
