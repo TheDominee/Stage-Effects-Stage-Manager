@@ -425,6 +425,7 @@
       <h2>Running Order <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-dim);font-size:11px;" id="cueCount"></span></h2>
 
       <div class="cue-file-row">
+        <button class="btn small ghost" id="newShowBtn">&#128203; New Show</button>
         <button class="btn small ghost" id="saveShowBtn">&#128190; Save Show</button>
         <button class="btn small ghost" id="loadShowBtn">&#128194; Load Show</button>
         <button class="btn small ghost" id="printShowBtn">&#128424; Print</button>
@@ -751,6 +752,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     emptyList: document.getElementById('emptyList'),
     cueCount: document.getElementById('cueCount'),
     cueTotal: document.getElementById('cueTotal'),
+    newShowBtn: document.getElementById('newShowBtn'),
     saveShowBtn: document.getElementById('saveShowBtn'),
     loadShowBtn: document.getElementById('loadShowBtn'),
     printShowBtn: document.getElementById('printShowBtn'),
@@ -2422,6 +2424,40 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     if(confirm('Clear the entire running order? This cannot be undone.')){
       cueList = []; currentCueId=null; persist(); renderCueList();
     }
+  });
+
+  // "New Show" wipes the running order AND the show details (name, venue,
+  // doors/start/curfew times, now-playing field) to start completely fresh —
+  // unlike "Clear all" above, which only empties the cue list. Custom cue-type
+  // tabs are left alone since those are more like app setup than show data.
+  el.newShowBtn.addEventListener('click', function(){
+    var count = cueList.length;
+    var warning = count > 0
+      ? (' This clears your current running order (' + count + ' cue' + (count===1?'':'s') + ') and show details.')
+      : ' This clears the show details.';
+    if(!confirm('Start a new show?' + warning + ' Save your current show first if you want to keep it.')) return;
+
+    stopTimerInternal(true);
+    currentCueId = null;
+    countdownTargetAt = null;
+    remaining = 0;
+    lastLoadedDuration = 0;
+    upRunStarted = false;
+    alarmActive = false;
+
+    cueList = [];
+    el.showName.value = 'Untitled Show';
+    el.showVenue.value = '';
+    el.showDoors.value = '';
+    el.showStartTime.value = '';
+    el.showCurfew.value = '';
+    el.actName.value = '';
+
+    persist();
+    setBadge('manual');
+    renderCueList();
+    updateTimeDisplay();
+    updatePresenter();
   });
 
   /* ---------------- save / load show (running order to/from a file) ---------------- */
