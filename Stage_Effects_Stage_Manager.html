@@ -390,7 +390,7 @@
         <button class="btn small ghost" id="saveShowBtn">&#128190; Save Show</button>
         <button class="btn small ghost" id="loadShowBtn">&#128194; Load Show</button>
         <button class="btn small ghost" id="printShowBtn">&#128424; Print</button>
-        <input type="file" id="loadShowInput" accept=".json,application/json" hidden>
+        <input type="file" id="loadShowInput" accept=".xlsx,.json,application/json" hidden>
         <span class="cue-file-hint">Save this running order to a file, or load one from a previous show or another computer.</span>
       </div>
 
@@ -587,8 +587,8 @@
     <div class="footer-about"><kbd>1</kbd>-<kbd>5</kbd> message presets (5 MIN/PLACES/STANDBY/GO/HOLD) &nbsp; <kbd>6</kbd> clear message &nbsp; <kbd>7</kbd> flash toggle &nbsp; <kbd>8</kbd> open extended display &nbsp; <kbd>9</kbd> test alarm &nbsp; <kbd>0</kbd> save show &mdash; handy if you're driving this from a Stream Deck or other macro pad: map each button to the matching key with its plain "Hotkey" action, no plugin needed. Just make sure this browser tab is the focused window when a button is pressed.</div>
     <div class="footer-about">Stage Manager Countdown Timer &mdash; built for Stage Effects Group (Pty) Ltd. Runs entirely offline in this browser tab.</div>
     <div class="footer-about">To share a broadcast: the link is already set up &mdash; just click Start Broadcasting, then copy the link that appears just below the buttons and send it (WhatsApp, email, whatever's easiest). Viewers just open it, no login or app needed. Every field in that box is still editable if you want your own link instead. Running several shows on different computers? Each one generates its own separate link automatically, so just copy the one shown on that computer.</div>
-    <div class="footer-about">Save Show / Load Show (top of the Running Order list) saves your cue list to a file you can keep, reuse as a template, or bring to a different computer &mdash; Load Show replaces the current list, so save first if you want to keep it.</div>
-    <div class="footer-about">Already have a running order in Excel? Download the template below, fill it in (or match its layout), then import it &mdash; it fills in the show details and cue list the same way Load Show does.</div>
+    <div class="footer-about">Save Show / Load Show (top of the Running Order list) now saves your cue list as an Excel (.xlsx) file &mdash; open it, edit it, or hand it to someone else, then Load Show it back in. Load Show still opens older .json show files too. Loading always replaces the current list, so save first if you want to keep it.</div>
+    <div class="footer-about">Building a running order from scratch in Excel? Download the template below for the right layout and instructions, then import it the same way &mdash; it fills in the show details and cue list just like Load Show does.</div>
     <div class="cue-file-row" style="justify-content:center;margin-top:10px;">
       <button class="btn small ghost" id="importExcelBtn">&#128202; Import Running Order from Excel</button>
       <button class="btn small ghost" id="downloadTemplateBtn">&#11015; Download Excel Template</button>
@@ -1941,8 +1941,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   function slugify(s){
     return (s || 'show').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'show';
   }
-  function saveShowToFile(){
-    var data = {
+  function buildShowSaveData(){
+    return {
       kind: 'stage-effects-show',
       version: 3,
       savedAt: new Date().toISOString(),
@@ -1962,17 +1962,58 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         return out;
       })
     };
-    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  }
+  function downloadBlob(blob, filename){
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
-    var stamp = new Date();
-    var datePart = stamp.getFullYear() + pad(stamp.getMonth()+1) + pad(stamp.getDate());
     a.href = url;
-    a.download = slugify(data.showName) + '-' + datePart + '.json';
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  }
+  // Builds a workbook in the same layout as the downloadable template (show-info
+  // rows, then a Type/Name/Minutes/Seconds/Notes/Color table) so a saved show
+  // opens and edits cleanly in Excel, and re-imports with full fidelity —
+  // including exact custom cue-type colors via the Color column.
+  function buildShowWorkbook(data){
+    var aoa = [
+      ['Show Name', data.showName || ''],
+      ['Venue', data.showVenue || ''],
+      ['Doors', data.showDoors || ''],
+      ['Show Start', data.showStartTime || ''],
+      ['Curfew', data.showCurfew || ''],
+      [],
+      ['Type', 'Name', 'Minutes', 'Seconds', 'Notes', 'Color']
+    ];
+    data.cueList.forEach(function(c){
+      var typeLabel = c.type === 'performance' ? 'Performance' : c.type === 'changeover' ? 'Changeover' : (c.kindLabel || 'Custom');
+      var mins = Math.floor((c.duration || 0) / 60);
+      var secs = (c.duration || 0) % 60;
+      var color = isCustomType(c.type) ? (c.kindColor || '') : '';
+      aoa.push([typeLabel, c.name || '', mins, secs, '', color]);
+    });
+    var ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 16 }, { wch: 34 }, { wch: 9 }, { wch: 9 }, { wch: 24 }, { wch: 10 }];
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Running Order');
+    return wb;
+  }
+  function saveShowToFile(){
+    var data = buildShowSaveData();
+    var stamp = new Date();
+    var datePart = stamp.getFullYear() + pad(stamp.getMonth()+1) + pad(stamp.getDate());
+    if(typeof XLSX !== 'undefined'){
+      var wb = buildShowWorkbook(data);
+      var arrBuf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+      var blob = new Blob([arrBuf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      downloadBlob(blob, slugify(data.showName) + '-' + datePart + '.xlsx');
+    } else {
+      // Fallback, only if the Excel library somehow isn't available in this copy of the app.
+      var jsonBlob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      downloadBlob(jsonBlob, slugify(data.showName) + '-' + datePart + '.json');
+    }
   }
   el.saveShowBtn.addEventListener('click', saveShowToFile);
 
@@ -2044,20 +2085,53 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     return true;
   }
 
+  // Reads an .xlsx file (Excel-format show file, or a running order built from
+  // the template) and applies it via applyLoadedShowData. Shared by the Load
+  // Show button (which now defaults to Excel) and the footer's Import button.
+  function readExcelFileAndApply(file, opts){
+    if(typeof XLSX === 'undefined'){ alert('Excel import is not available in this copy of the app.'); return; }
+    var reader = new FileReader();
+    reader.onload = function(){
+      var data;
+      try{
+        var wb = XLSX.read(new Uint8Array(reader.result), { type: 'array' });
+        var sheetName = wb.SheetNames[0];
+        var ws = wb.Sheets[sheetName];
+        var rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        data = parseExcelRowsToShowData(rows);
+      }catch(e){
+        alert('Could not read that Excel file. Make sure it is a .xlsx file saved from this app or the template.');
+        return;
+      }
+      if(!data){
+        alert('Could not find a running order table in that file. Use "Download Excel Template" to get a file with the right layout, or check that it has "Type" and "Name" column headers.');
+        return;
+      }
+      applyLoadedShowData(data, opts);
+    };
+    reader.onerror = function(){ alert('Could not read that file.'); };
+    reader.readAsArrayBuffer(file);
+  }
+
   el.loadShowBtn.addEventListener('click', function(){ el.loadShowInput.click(); });
   el.loadShowInput.addEventListener('change', function(){
     var file = el.loadShowInput.files && el.loadShowInput.files[0];
     el.loadShowInput.value = ''; // so picking the same file again still fires 'change'
     if(!file) return;
-    var reader = new FileReader();
-    reader.onload = function(){
-      var data;
-      try{ data = JSON.parse(String(reader.result)); }
-      catch(e){ alert('That file is not a valid show file (could not read its JSON).'); return; }
-      applyLoadedShowData(data);
-    };
-    reader.onerror = function(){ alert('Could not read that file.'); };
-    reader.readAsText(file);
+    var isJson = /\.json$/i.test(file.name) || file.type === 'application/json';
+    if(isJson){
+      var reader = new FileReader();
+      reader.onload = function(){
+        var data;
+        try{ data = JSON.parse(String(reader.result)); }
+        catch(e){ alert('That file is not a valid show file (could not read its JSON).'); return; }
+        applyLoadedShowData(data);
+      };
+      reader.onerror = function(){ alert('Could not read that file.'); };
+      reader.readAsText(file);
+    } else {
+      readExcelFileAndApply(file, {});
+    }
   });
 
   /* ---------------- import running order from excel ---------------- */
@@ -2092,7 +2166,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     function cellStr(v){ return (v === null || v === undefined) ? '' : String(v).trim(); }
 
     var headerRowIdx = -1;
-    var col = { type:-1, name:-1, min:-1, sec:-1 };
+    var col = { type:-1, name:-1, min:-1, sec:-1, color:-1 };
     for(var i=0;i<rows.length;i++){
       var row = rows[i] || [];
       var lower = row.map(function(c){ return cellStr(c).toLowerCase(); });
@@ -2104,6 +2178,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         for(var j=0;j<lower.length;j++){
           if(col.min === -1 && lower[j].indexOf('min') === 0) col.min = j;
           if(col.sec === -1 && lower[j].indexOf('sec') === 0) col.sec = j;
+          if(col.color === -1 && lower[j].indexOf('color') === 0) col.color = j;
         }
         break;
       }
@@ -2136,7 +2211,10 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       else{
         var kindId = 'xls_' + slugify(typeRaw);
         if(!kindByLabel[typeLower]){
-          var kindEntry = { id: kindId, label: typeRaw.slice(0,24), color: KIND_PALETTE[Object.keys(kindByLabel).length % KIND_PALETTE.length] };
+          var providedColor = col.color !== -1 ? cellStr(dr[col.color]) : '';
+          var hexMatch = providedColor.match(/^#?([0-9a-fA-F]{6})$/);
+          var kindColor = hexMatch ? ('#' + hexMatch[1]) : KIND_PALETTE[Object.keys(kindByLabel).length % KIND_PALETTE.length];
+          var kindEntry = { id: kindId, label: typeRaw.slice(0,24), color: kindColor };
           kindByLabel[typeLower] = kindEntry;
           data.customKinds.push(kindEntry);
         }
@@ -2161,28 +2239,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var file = el.importExcelInput.files && el.importExcelInput.files[0];
       el.importExcelInput.value = '';
       if(!file) return;
-      if(typeof XLSX === 'undefined'){ alert('Excel import is not available in this copy of the app.'); return; }
-      var reader = new FileReader();
-      reader.onload = function(){
-        var data;
-        try{
-          var wb = XLSX.read(new Uint8Array(reader.result), { type: 'array' });
-          var sheetName = wb.SheetNames[0];
-          var ws = wb.Sheets[sheetName];
-          var rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-          data = parseExcelRowsToShowData(rows);
-        }catch(e){
-          alert('Could not read that Excel file. Make sure it is a .xlsx file saved from the template.');
-          return;
-        }
-        if(!data){
-          alert('Could not find a running order table in that file. Use "Download Excel Template" to get a file with the right layout, or check that it has "Type" and "Name" column headers.');
-          return;
-        }
-        applyLoadedShowData(data, { confirmVerb: 'Import', badDataMessage: 'Could not find a running order table in that file.' });
-      };
-      reader.onerror = function(){ alert('Could not read that file.'); };
-      reader.readAsArrayBuffer(file);
+      readExcelFileAndApply(file, { confirmVerb: 'Import' });
     });
   }
   if(el.downloadTemplateBtn){
