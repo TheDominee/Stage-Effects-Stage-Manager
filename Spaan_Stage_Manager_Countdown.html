@@ -363,6 +363,11 @@
   }
   .icon-btn:hover{background:var(--overlay-hover);color:var(--text);}
   .icon-btn.danger:hover{color:var(--danger-text);}
+  .icon-btn.drag-handle{cursor:grab;touch-action:none;font-size:16px;}
+  .icon-btn.drag-handle:active{cursor:grabbing;}
+  table.cue-table tbody tr.dragging{position:relative;z-index:5;opacity:.85;background:var(--overlay-hover);outline:1px dashed var(--gold);user-select:none;}
+  table.cue-table tbody tr.drop-before td{box-shadow:inset 0 2px 0 0 var(--gold);}
+  table.cue-table tbody tr.drop-after td{box-shadow:inset 0 -2px 0 0 var(--gold);}
   .empty-list{color:var(--text-dim);font-size:13px;text-align:center;padding:22px 0;}
   .cue-scroll{max-height:420px;overflow-y:auto;}
   .cue-total{margin-top:10px;font-size:12px;color:var(--text-dim);text-align:right;}
@@ -1225,6 +1230,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     cueList.forEach(function(c, idx){
       var tr = document.createElement('tr');
       tr.className = (c.type === 'changeover' ? 'changeover-row ' : '') + (c.id === currentCueId ? 'current-row' : '');
+      tr.dataset.cueId = c.id;
 
       var tdIdx = document.createElement('td');
       tdIdx.textContent = idx+1;
@@ -1261,6 +1267,30 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       function growNotes(){ notesInput.style.height = 'auto'; notesInput.style.height = notesInput.scrollHeight + 'px'; }
       notesInput.addEventListener('input', growNotes);
       notesInput.addEventListener('change', function(){ c.notes = notesInput.value; persist(); });
+      // Shift+Enter starts/continues a bullet list, so the SM can jot quick bulleted notes.
+      // Plain Enter still just inserts a normal line break (native textarea behaviour).
+      notesInput.addEventListener('keydown', function(e){
+        if(e.key !== 'Enter' || !e.shiftKey) return;
+        e.preventDefault();
+        var val = notesInput.value;
+        var start = notesInput.selectionStart;
+        var end = notesInput.selectionEnd;
+        var before = val.slice(0, start);
+        var after = val.slice(end);
+        var insert;
+        if(before.length === 0){
+          insert = '• ';
+        } else {
+          if(before.indexOf('• ') === -1){ before = '• ' + before; }
+          insert = '\n• ';
+        }
+        notesInput.value = before + insert + after;
+        var pos = before.length + insert.length;
+        notesInput.selectionStart = notesInput.selectionEnd = pos;
+        growNotes();
+        c.notes = notesInput.value;
+        persist();
+      });
       tdNotes.appendChild(notesInput);
 
       var printRow = document.createElement('div');
@@ -1311,21 +1341,20 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       loadBtn.className = 'icon-btn'; loadBtn.title = 'Load into timer'; loadBtn.textContent = '▶';
       loadBtn.addEventListener('click', function(){ loadCue(c.id); });
 
-      var upBtn = document.createElement('button');
-      upBtn.className = 'icon-btn'; upBtn.title = 'Move up'; upBtn.textContent = '↑';
-      upBtn.addEventListener('click', function(){ moveCue(idx,-1); });
-
-      var downBtn = document.createElement('button');
-      downBtn.className = 'icon-btn'; downBtn.title = 'Move down'; downBtn.textContent = '↓';
-      downBtn.addEventListener('click', function(){ moveCue(idx,1); });
+      var dragHandle = document.createElement('button');
+      dragHandle.type = 'button';
+      dragHandle.className = 'icon-btn drag-handle';
+      dragHandle.title = 'Drag to reorder';
+      dragHandle.setAttribute('aria-label', 'Drag to reorder');
+      dragHandle.textContent = '⠿';
+      attachDragHandle(dragHandle, tr);
 
       var delBtn = document.createElement('button');
       delBtn.className = 'icon-btn danger'; delBtn.title = 'Delete'; delBtn.textContent = '✕';
       delBtn.addEventListener('click', function(){ deleteCue(c.id); });
 
       actions.appendChild(loadBtn);
-      actions.appendChild(upBtn);
-      actions.appendChild(downBtn);
+      actions.appendChild(dragHandle);
       actions.appendChild(delBtn);
       tdActions.appendChild(actions);
 
@@ -1343,11 +1372,73 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     updateNextUpLine();
   }
 
-  function moveCue(idx, dir){
-    var newIdx = idx+dir;
-    if(newIdx<0 || newIdx>=cueList.length) return;
-    var tmp = cueList[idx]; cueList[idx]=cueList[newIdx]; cueList[newIdx]=tmp;
-    persist(); renderCueList();
+  // Drag-to-reorder: grabbing the handle slides the row along with the pointer
+  // (visually, via a transform — its place in the DOM doesn't change while
+  // dragging, since moving the row that owns the active pointer capture would
+  // cancel the gesture in some browsers) while a gold indicator line shows
+  // where it will land. On release the cueList array is reordered to match
+  // and the list is re-rendered. Works with mouse, pen and touch via Pointer
+  // Events, so it also drags on a tablet.
+  function attachDragHandle(handle, tr){
+    var pointerId = null;
+    var startY = 0;
+    var dropBeforeId = null; // cueId the dragged row will land before; null = land at the end
+    function clearIndicators(){
+      Array.prototype.forEach.call(el.cueBody.querySelectorAll('tr'), function(r){
+        r.classList.remove('drop-before', 'drop-after');
+      });
+    }
+    function onMove(e){
+      if(pointerId === null || e.pointerId !== pointerId) return;
+      tr.style.transform = 'translateY(' + (e.clientY - startY) + 'px)';
+      clearIndicators();
+      dropBeforeId = null;
+      var rows = Array.prototype.slice.call(el.cueBody.querySelectorAll('tr')).filter(function(r){ return r !== tr; });
+      for(var i=0;i<rows.length;i++){
+        var rect = rows[i].getBoundingClientRect();
+        if(e.clientY < rect.top + rect.height/2){
+          rows[i].classList.add('drop-before');
+          dropBeforeId = rows[i].dataset.cueId;
+          break;
+        }
+      }
+      if(dropBeforeId === null && rows.length){
+        rows[rows.length-1].classList.add('drop-after');
+      }
+    }
+    function onUp(e){
+      if(pointerId === null || e.pointerId !== pointerId) return;
+      try{ handle.releasePointerCapture(pointerId); }catch(err){}
+      pointerId = null;
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onUp);
+      tr.style.transform = '';
+      tr.classList.remove('dragging');
+      clearIndicators();
+
+      var myId = tr.dataset.cueId;
+      var without = cueList.filter(function(c){ return c.id !== myId; });
+      var dragged = cueList.filter(function(c){ return c.id === myId; })[0];
+      if(!dragged) return;
+      var insertAt = dropBeforeId ? without.findIndex(function(c){ return c.id === dropBeforeId; }) : -1;
+      if(insertAt < 0) insertAt = without.length;
+      without.splice(insertAt, 0, dragged);
+      cueList = without;
+      persist();
+      renderCueList();
+    }
+    handle.addEventListener('pointerdown', function(e){
+      if(e.button !== undefined && e.button !== 0) return;
+      e.preventDefault();
+      pointerId = e.pointerId;
+      startY = e.clientY;
+      try{ handle.setPointerCapture(pointerId); }catch(err){}
+      tr.classList.add('dragging');
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp);
+      handle.addEventListener('pointercancel', onUp);
+    });
   }
   function deleteCue(id){
     cueList = cueList.filter(function(c){return c.id!==id;});
@@ -1441,6 +1532,12 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
   function escapeHtml(s){
     var d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+  }
+
+  // Same as escapeHtml, but turns line breaks into <br> so multi-line / bulleted
+  // notes still print as separate lines instead of collapsing onto one.
+  function escapeHtmlBreaks(s){
+    return escapeHtml(s).replace(/\n/g, '<br>');
   }
 
   function loadCue(id){
@@ -2550,7 +2647,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         typeLabel = 'Performance'; badgeColor = '#2f5fa8';
       }
       var badgeBg = hexToRgba(badgeColor, 0.14);
-      var notesCell = hasPrintNotes ? ('<td class="notes">'+(c.printNote && c.notes ? escapeHtml(c.notes) : '')+'</td>') : '';
+      var notesCell = hasPrintNotes ? ('<td class="notes">'+(c.printNote && c.notes ? escapeHtmlBreaks(c.notes) : '')+'</td>') : '';
       return '<tr>'+
         '<td class="idx">'+(idx+1)+'</td>'+
         '<td><span class="type-badge" style="background:'+badgeBg+';color:'+badgeColor+';border-color:'+badgeColor+'">'+escapeHtml(typeLabel)+'</span></td>'+
