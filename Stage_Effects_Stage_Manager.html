@@ -2430,11 +2430,17 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   // doors/start/curfew times, now-playing field) to start completely fresh —
   // unlike "Clear all" above, which only empties the cue list. Custom cue-type
   // tabs are left alone since those are more like app setup than show data.
+  // It also spins up a brand-new broadcast room (same pattern as the "New
+  // broadcast link" button): a fresh Room ID means fresh, empty crew chat and
+  // fresh viewer/crew links, so nobody from the last show can still see this
+  // one, and old links from the previous show stop working. Broadcasting is
+  // switched off so Erik has to press Start Broadcasting again once ready,
+  // rather than silently going live on the new room.
   el.newShowBtn.addEventListener('click', function(){
     var count = cueList.length;
     var warning = count > 0
-      ? (' This clears your current running order (' + count + ' cue' + (count===1?'':'s') + ') and show details.')
-      : ' This clears the show details.';
+      ? (' This clears your current running order (' + count + ' cue' + (count===1?'':'s') + '), show details, and the crew chat, and starts a new broadcast link.')
+      : ' This clears the show details and crew chat, and starts a new broadcast link.';
     if(!confirm('Start a new show?' + warning + ' Save your current show first if you want to keep it.')) return;
 
     stopTimerInternal(true);
@@ -2458,6 +2464,20 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     renderCueList();
     updateTimeDisplay();
     updatePresenter();
+
+    // Fresh broadcast room: new Room ID, chat cleared, links regenerated,
+    // broadcasting stopped until Start Broadcasting is pressed again.
+    bcSettings.enabled = false;
+    bcSettings.blobUrl = '';
+    bcSettings.roomId = randomRoomId();
+    el.bcRoomId.value = bcSettings.roomId;
+    saveJSON('sm_broadcast_settings', bcSettings);
+    crewMsgsCache = {};
+    crewChatRenderedCount = 0;
+    if(el.crewChatInput) el.crewChatInput.value = '';
+    if(typeof renderCrewChat === 'function') renderCrewChat();
+    setBroadcastUI();
+    el.bcStatusText.textContent = 'New show, new broadcast room — click Start Broadcasting to get a fresh link (old links stop working).';
   });
 
   /* ---------------- save / load show (running order to/from a file) ---------------- */
