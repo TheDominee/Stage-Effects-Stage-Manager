@@ -584,6 +584,7 @@
   <footer class="hint">
     <kbd>Space</kbd> start/pause &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>F</kbd> fullscreen this window &nbsp; <kbd>&larr;</kbd><kbd>&rarr;</kbd> previous/next cue &nbsp;
     Drag the Extended Display window onto your second screen, then press <kbd>F11</kbd> for true full screen.
+    <div class="footer-about"><kbd>1</kbd>-<kbd>5</kbd> message presets (5 MIN/PLACES/STANDBY/GO/HOLD) &nbsp; <kbd>6</kbd> clear message &nbsp; <kbd>7</kbd> flash toggle &nbsp; <kbd>8</kbd> open extended display &nbsp; <kbd>9</kbd> test alarm &nbsp; <kbd>0</kbd> save show &mdash; handy if you're driving this from a Stream Deck or other macro pad: map each button to the matching key with its plain "Hotkey" action, no plugin needed. Just make sure this browser tab is the focused window when a button is pressed.</div>
     <div class="footer-about">Stage Manager Countdown Timer &mdash; built for Stage Effects Group (Pty) Ltd. Runs entirely offline in this browser tab.</div>
     <div class="footer-about">To share a broadcast: the link is already set up &mdash; just click Start Broadcasting, then copy the link that appears just below the buttons and send it (WhatsApp, email, whatever's easiest). Viewers just open it, no login or app needed. Every field in that box is still editable if you want your own link instead. Running several shows on different computers? Each one generates its own separate link automatically, so just copy the one shown on that computer.</div>
     <div class="footer-about">Save Show / Load Show (top of the Running Order list) saves your cue list to a file you can keep, reuse as a template, or bring to a different computer &mdash; Load Show replaces the current list, so save first if you want to keep it.</div>
@@ -1917,7 +1918,7 @@
   function slugify(s){
     return (s || 'show').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'show';
   }
-  el.saveShowBtn.addEventListener('click', function(){
+  function saveShowToFile(){
     var data = {
       kind: 'stage-effects-show',
       version: 3,
@@ -1949,7 +1950,8 @@
     a.click();
     document.body.removeChild(a);
     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
-  });
+  }
+  el.saveShowBtn.addEventListener('click', saveShowToFile);
 
   el.loadShowBtn.addEventListener('click', function(){ el.loadShowInput.click(); });
   el.loadShowInput.addEventListener('change', function(){
@@ -2164,6 +2166,19 @@
       var pIdx = currentCueId ? findCueIndex(currentCueId) : -1;
       if(pIdx > 0) loadCue(cueList[pIdx - 1].id);
     }
+    // Number-key shortcuts (1-9, 0) - handy for a Stream Deck or other macro pad's
+    // "Hotkey" action: give each button a plain key press and it drives this page,
+    // as long as this browser tab/window has focus when the button is pressed.
+    else if(e.key === '1'){ sendMessageToDisplay('5 MINUTES'); }
+    else if(e.key === '2'){ sendMessageToDisplay('PLACES PLEASE'); }
+    else if(e.key === '3'){ sendMessageToDisplay('STANDBY'); }
+    else if(e.key === '4'){ sendMessageToDisplay('GO'); }
+    else if(e.key === '5'){ sendMessageToDisplay('PLEASE HOLD'); }
+    else if(e.key === '6'){ clearMessage(); }
+    else if(e.key === '7'){ toggleMessageFlash(); }
+    else if(e.key === '8'){ openPresenterWindow(); }
+    else if(e.key === '9'){ testFlash(); }
+    else if(e.key === '0'){ saveShowToFile(); }
   });
 
   window.addEventListener('beforeunload', persist);
