@@ -379,6 +379,7 @@
   .crew-chat-empty{color:var(--text-dim);font-size:12px;text-align:center;padding:10px 0;}
   .crew-chat-msg{max-width:85%;padding:6px 9px;border-radius:8px;font-size:12.5px;line-height:1.35;word-wrap:break-word;}
   .crew-chat-msg .ccm-from{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;opacity:.75;margin-bottom:2px;}
+  .crew-chat-msg .ccm-cue{font-weight:400;text-transform:none;letter-spacing:0;opacity:.85;}
   .crew-chat-msg.ccm-sm{align-self:flex-end;background:var(--warn-chip);color:var(--gold-accent);}
   .crew-chat-msg.ccm-crew{align-self:flex-start;background:var(--overlay-hover);color:var(--text);}
   .crew-chat-input-row{display:flex;gap:6px;}
@@ -841,12 +842,16 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       dbUrl: 'https://stage-effects-broadcast-default-rtdb.europe-west1.firebasedatabase.app',
       roomId: randomRoomId(),
       viewerUrl: 'https://restless-king-1b9a.jhfdebruin.workers.dev',
+      crewViewerUrl: 'https://thedominee.github.io/Stage-Effects-Stage-Manager/Stage_Effects_Crew.html',
       enabled: false
     };
     saveJSON('sm_broadcast_settings', bcSettings);
   }
   if(!bcSettings.mode){ bcSettings.mode = bcSettings.dbUrl ? 'advanced' : 'auto'; }
   if(!bcSettings.blobUrl){ bcSettings.blobUrl = ''; }
+  // Fills in the Crew page URL for settings saved before this field existed —
+  // same one-time migration pattern as the two lines above.
+  if(!bcSettings.crewViewerUrl){ bcSettings.crewViewerUrl = 'https://thedominee.github.io/Stage-Effects-Stage-Manager/Stage_Effects_Crew.html'; }
   el.bcDbUrl.value = bcSettings.dbUrl || '';
   el.bcRoomId.value = bcSettings.roomId || randomRoomId();
   el.bcViewerUrl.value = bcSettings.viewerUrl || '';
@@ -1226,7 +1231,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         var m = crewMsgsCache[id];
         var cls = m.from === 'sm' ? 'ccm-sm' : 'ccm-crew';
         var who = m.from === 'sm' ? 'You' : (m.fromLabel || 'Crew');
-        return '<div class="crew-chat-msg '+cls+'"><span class="ccm-from">'+escapeHtml(who)+'</span>'+escapeHtml(m.text||'')+'</div>';
+        var cueTag = m.cueName ? ' <span class="ccm-cue">&middot; '+escapeHtml(m.cueName)+'</span>' : '';
+        return '<div class="crew-chat-msg '+cls+'"><span class="ccm-from">'+escapeHtml(who)+cueTag+'</span>'+escapeHtml(m.text||'')+'</div>';
       }).join('');
       if(atBottom || ids.length !== crewChatRenderedCount) el.crewChatLog.scrollTop = el.crewChatLog.scrollHeight;
     }
@@ -1254,7 +1260,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     fetch(base + '/' + id + '.json', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: 'sm', fromLabel: 'Stage Manager', text: text.slice(0,300), ts: Date.now() })
+      body: JSON.stringify({ from: 'sm', fromLabel: 'Stage Manager', text: text.slice(0,300), cueName: el.actName.value || '', ts: Date.now() })
     }).then(function(){ pollCrewChat(); }).catch(function(){});
   }
   el.crewChatSendBtn.addEventListener('click', sendCrewChatMsg);
@@ -1270,8 +1276,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var m = crewMsgsCache[id];
       var who = m.from === 'sm' ? 'Stage Manager' : (m.fromLabel || 'Crew');
       var when = m.ts ? (new Date(m.ts)).toLocaleString() : '';
-      return '<tr><td class="cw-time">'+escapeHtml(when)+'</td><td class="cw-who">'+escapeHtml(who)+'</td><td class="cw-text">'+escapeHtml(m.text||'')+'</td></tr>';
-    }).join('') : '<tr><td colspan="3" class="cw-empty">No messages were sent during this show.</td></tr>';
+      return '<tr><td class="cw-time">'+escapeHtml(when)+'</td><td class="cw-who">'+escapeHtml(who)+'</td><td class="cw-cue">'+escapeHtml(m.cueName||'—')+'</td><td class="cw-text">'+escapeHtml(m.text||'')+'</td></tr>';
+    }).join('') : '<tr><td colspan="4" class="cw-empty">No messages were sent during this show.</td></tr>';
     var printedAt = fmtClock(new Date()) + ' on ' + new Date().toLocaleDateString();
     var html = ''+
     '<!doctype html><html><head><meta charset="utf-8">'+
@@ -1293,6 +1299,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       'tbody tr:nth-child(even){background:#f7f7fa;}'+
       'td.cw-time{white-space:nowrap;font-family:"Courier New",monospace;color:#777;font-size:11.5px;}'+
       'td.cw-who{font-weight:700;color:#16213F;white-space:nowrap;}'+
+      'td.cw-cue{color:#8a6d1f;white-space:nowrap;}'+
       'td.cw-text{word-break:break-word;}'+
       'td.cw-empty{text-align:center;color:#999;font-style:italic;}'+
       '@page{ margin:0 0 14mm; }'+
@@ -1300,7 +1307,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     '<div class="toolbar"><button onclick="window.print()">Print</button><button class="ghost" onclick="window.close()">Close</button></div>'+
     '<div class="head"><h1>'+escapeHtml(el.showName.value || 'Untitled Show')+' — Crew Chat</h1>'+
     '<div class="sub">Printed '+escapeHtml(printedAt)+'</div></div>'+
-    '<table><thead><tr><th style="width:150px;">Time</th><th style="width:140px;">From</th><th>Message</th></tr></thead>'+
+    '<table><thead><tr><th style="width:150px;">Time</th><th style="width:120px;">From</th><th style="width:150px;">Cue</th><th>Message</th></tr></thead>'+
     '<tbody>'+rowsHtml+'</tbody></table>'+
     '</body></html>';
     var w = window.open('', 'spaan_print_crew_chat', 'width=900,height=760');
