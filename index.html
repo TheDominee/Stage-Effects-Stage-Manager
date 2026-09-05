@@ -52,6 +52,12 @@
   #countdown.danger{color:#fff;}
   #overrunTag{margin-top:8px;font-size:20px;font-weight:700;letter-spacing:4px;color:#fff;text-transform:uppercase;opacity:0;}
   #overrunTag.show{opacity:1;}
+  #nextLine{margin-top:26px;font-size:20px;color:var(--dim);letter-spacing:.5px;display:none;text-align:center;padding:0 40px;max-width:90vw;}
+  #nextLine b{color:var(--gold-2);font-weight:700;}
+  #nextLine .next-type{font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-right:4px;}
+  #nextLine .next-type.nt-performance{color:var(--perf-text);}
+  #nextLine .next-type.nt-changeover{color:var(--chg-text);}
+  #nextLine .next-type.nt-manual{color:var(--man-text);}
 
   /* Compact mode: a short viewport (a phone rotated to landscape) doesn't have
      room for the normal spacing between the show name, badge, act name and
@@ -62,6 +68,7 @@
   #stage.compact #badge{font-size:13px;padding:4px 12px;margin-bottom:6px;}
   #stage.compact #actName{margin-bottom:8px;}
   #stage.compact #overrunTag{margin-top:4px;font-size:14px;}
+  #stage.compact #nextLine{margin-top:8px;font-size:13px;}
   @keyframes flashRed{0%,100%{background-color:#000000;}50%{background-color:#ff1a1a;}}
   #stage.alarm{animation:flashRed .9s steps(2,jump-none) infinite;}
   #stage.alarm #actName,#stage.alarm #countdown,#stage.alarm #showLabel,
@@ -96,6 +103,7 @@
   <div id="actName"></div>
   <div id="countdown">00:00:00</div>
   <div id="overrunTag">OVERRUN</div>
+  <div id="nextLine">NEXT &nbsp;&mdash;&nbsp; <span id="nextType" class="next-type"></span> <b id="nextName"></b> <span id="nextDur"></span></div>
   <div id="idleMsg">Waiting for broadcast&hellip;</div>
   <div id="messageOverlay">
     <div id="messageText"></div>
@@ -145,6 +153,10 @@
     actName: document.getElementById('actName'),
     countdown: document.getElementById('countdown'),
     overrunTag: document.getElementById('overrunTag'),
+    nextLine: document.getElementById('nextLine'),
+    nextType: document.getElementById('nextType'),
+    nextName: document.getElementById('nextName'),
+    nextDur: document.getElementById('nextDur'),
     idleMsg: document.getElementById('idleMsg'),
     messageOverlay: document.getElementById('messageOverlay'),
     messageText: document.getElementById('messageText'),
@@ -308,6 +320,33 @@
   }
   // ===== SYNC BLOCK END =====
 
+  function nextTypeLabel(type, customLabel){
+    if(type === 'changeover') return 'Changeover';
+    if(type === 'performance') return 'Performance';
+    if(isCustomType(type)) return customLabel || 'Custom';
+    return 'Manual';
+  }
+
+  function updateNextLine(){
+    var name = lastPayload && lastPayload.nextName;
+    if(!name){
+      el.nextLine.style.display = 'none';
+      return;
+    }
+    var type = lastPayload.nextType || 'manual';
+    el.nextType.className = 'next-type';
+    if(isCustomType(type)){
+      el.nextType.style.color = lastPayload.nextTypeColor || '#8890a8';
+    } else {
+      el.nextType.style.color = '';
+      el.nextType.classList.add('nt-' + type);
+    }
+    el.nextType.textContent = nextTypeLabel(type, lastPayload.nextTypeLabel) + ':';
+    el.nextName.textContent = name;
+    el.nextDur.textContent = (lastPayload.nextDuration != null) ? ('(' + fmt(lastPayload.nextDuration) + ')') : '';
+    el.nextLine.style.display = 'block';
+  }
+
   function render(){
     if(!haveSettings()) return;
     updateCompactMode();
@@ -325,6 +364,7 @@
       el.countdown.style.display = 'none';
       el.overrunTag.classList.remove('show');
       el.messageOverlay.style.display = 'none';
+      el.nextLine.style.display = 'none';
       el.stage.classList.remove('alarm');
       el.showLabel.textContent = '';
       return;
@@ -342,6 +382,7 @@
       el.countdown.style.display = 'none';
       el.overrunTag.classList.remove('show');
       el.messageOverlay.style.display = 'flex';
+      el.nextLine.style.display = 'none';
       el.messageText.textContent = lastPayload.message || '';
       el.stage.classList.toggle('alarm', !!lastPayload.messageFlashing);
       fitOverflow(el.messageText, 0.4);
@@ -411,6 +452,8 @@
       el.countdown.textContent = fmt(remaining);
     }
     fitOverflow(el.countdown, hasCurrent ? 0.32 : 0.42);
+    updateNextLine();
+    fitOverflow(el.nextLine, 0.12);
   }
 
   // Re-fit text immediately on rotation/resize instead of waiting for the next
