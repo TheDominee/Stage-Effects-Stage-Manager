@@ -2030,6 +2030,162 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     document.body.removeChild(a);
     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
   }
+  // The offline Excel engine (a self-contained community build) can read and
+  // write .xlsx files, but it has no support for writing cell formatting like
+  // "Wrap Text" — that's a paid-tier feature of the library. Since the saved
+  // workbook is just a small, uncompressed ZIP of XML files, we patch the
+  // wrap-text style onto the Notes column directly by editing the ZIP's raw
+  // bytes after XLSX.write() produces it, rather than pulling in another
+  // library. This only touches xl/styles.xml and the one worksheet's XML —
+  // everything else in the file passes through untouched.
+  var CRC32_TABLE = (function(){
+    var table = [];
+    for(var n = 0; n < 256; n++){
+      var c = n;
+      for(var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      table[n] = c >>> 0;
+    }
+    return table;
+  })();
+  function crc32Bytes(bytes){
+    var crc = 0xFFFFFFFF;
+    for(var i = 0; i < bytes.length; i++) crc = CRC32_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+  // Reads a ZIP whose entries are all stored uncompressed (method 0) — which is
+  // exactly what XLSX.write() produces when no `compression` option is passed.
+  // Throws if that assumption doesn't hold, so callers can fall back safely.
+  function readZipStoreEntries(buf){
+    var view = new DataView(buf);
+    var bytes = new Uint8Array(buf);
+    var eocdPos = -1;
+    for(var i = bytes.length - 22; i >= 0 && i >= bytes.length - 22 - 65536; i--){
+      if(view.getUint32(i, true) === 0x06054b50){ eocdPos = i; break; }
+    }
+    if(eocdPos === -1) throw new Error('EOCD not found');
+    var cdOffset = view.getUint32(eocdPos + 16, true);
+    var cdEntries = view.getUint16(eocdPos + 10, true);
+    var entries = [];
+    var p = cdOffset;
+    for(var e = 0; e < cdEntries; e++){
+      if(view.getUint32(p, true) !== 0x02014b50) throw new Error('Bad central directory signature');
+      var method = view.getUint16(p + 10, true);
+      var compSize = view.getUint32(p + 20, true);
+      var nameLen = view.getUint16(p + 28, true);
+      var extraLen = view.getUint16(p + 30, true);
+      var commentLen = view.getUint16(p + 32, true);
+      var localOffset = view.getUint32(p + 42, true);
+      var name = new TextDecoder().decode(bytes.subarray(p + 46, p + 46 + nameLen));
+      p += 46 + nameLen + extraLen + commentLen;
+      if(method !== 0) throw new Error('Unsupported compression method for ' + name);
+      var lp = localOffset;
+      if(view.getUint32(lp, true) !== 0x04034b50) throw new Error('Bad local header for ' + name);
+      var lNameLen = view.getUint16(lp + 26, true);
+      var lExtraLen = view.getUint16(lp + 28, true);
+      var dataStart = lp + 30 + lNameLen + lExtraLen;
+      entries.push({ name: name, data: bytes.slice(dataStart, dataStart + compSize) });
+    }
+    return entries;
+  }
+  // Rebuilds a fresh, valid, all-stored ZIP from a list of {name, data} entries.
+  function writeZipStoreEntries(entries){
+    var parts = [];
+    var centralParts = [];
+    var offset = 0;
+    entries.forEach(function(entry){
+      var nameBytes = new TextEncoder().encode(entry.name);
+      var data = entry.data;
+      var crc = crc32Bytes(data);
+      var localHeader = new Uint8Array(30 + nameBytes.length);
+      var lv = new DataView(localHeader.buffer);
+      lv.setUint32(0, 0x04034b50, true);
+      lv.setUint16(4, 20, true);
+      lv.setUint16(6, 0, true);
+      lv.setUint16(8, 0, true);
+      lv.setUint16(10, 0, true);
+      lv.setUint16(12, 0x21, true);
+      lv.setUint32(14, crc, true);
+      lv.setUint32(18, data.length, true);
+      lv.setUint32(22, data.length, true);
+      lv.setUint16(26, nameBytes.length, true);
+      lv.setUint16(28, 0, true);
+      localHeader.set(nameBytes, 30);
+      parts.push(localHeader, data);
+      var localOffset = offset;
+      offset += localHeader.length + data.length;
+      var centralHeader = new Uint8Array(46 + nameBytes.length);
+      var cv = new DataView(centralHeader.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint16(8, 0, true);
+      cv.setUint16(10, 0, true);
+      cv.setUint16(12, 0, true);
+      cv.setUint16(14, 0x21, true);
+      cv.setUint32(16, crc, true);
+      cv.setUint32(20, data.length, true);
+      cv.setUint32(24, data.length, true);
+      cv.setUint16(28, nameBytes.length, true);
+      cv.setUint16(30, 0, true);
+      cv.setUint16(32, 0, true);
+      cv.setUint16(34, 0, true);
+      cv.setUint16(36, 0, true);
+      cv.setUint32(38, 0, true);
+      cv.setUint32(42, localOffset, true);
+      centralHeader.set(nameBytes, 46);
+      centralParts.push(centralHeader);
+    });
+    var cdStart = offset;
+    var cdSize = 0;
+    centralParts.forEach(function(cp){ parts.push(cp); offset += cp.length; cdSize += cp.length; });
+    var eocd = new Uint8Array(22);
+    var ev = new DataView(eocd.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(8, entries.length, true);
+    ev.setUint16(10, entries.length, true);
+    ev.setUint32(12, cdSize, true);
+    ev.setUint32(16, cdStart, true);
+    parts.push(eocd);
+    var total = 0;
+    parts.forEach(function(pt){ total += pt.length; });
+    var out = new Uint8Array(total);
+    var o = 0;
+    parts.forEach(function(pt){ out.set(pt, o); o += pt.length; });
+    return out.buffer;
+  }
+  // Turns on "Wrap Text" for a whole column (letters, e.g. 'E') on the first
+  // worksheet of a just-written .xlsx ArrayBuffer. Falls back to returning the
+  // original buffer untouched if anything about the ZIP isn't what we expect,
+  // so a save can never be broken by this cosmetic touch-up.
+  function applyColumnWrapText(arrBuf, colLetter){
+    try {
+      var dec = new TextDecoder();
+      var enc = new TextEncoder();
+      var entries = readZipStoreEntries(arrBuf).map(function(en){
+        if(en.name === 'xl/styles.xml'){
+          var xml = dec.decode(en.data);
+          if(/<cellXfs count="1">/.test(xml)){
+            xml = xml.replace(
+              /<cellXfs count="1">([\s\S]*?)<\/cellXfs>/,
+              '<cellXfs count="2">$1<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf></cellXfs>'
+            );
+            return { name: en.name, data: enc.encode(xml) };
+          }
+          return en;
+        }
+        if(en.name === 'xl/worksheets/sheet1.xml'){
+          var xml2 = dec.decode(en.data);
+          var re = new RegExp('(<c r="' + colLetter + '\\d+")', 'g');
+          xml2 = xml2.replace(re, '$1 s="1"');
+          return { name: en.name, data: enc.encode(xml2) };
+        }
+        return en;
+      });
+      return writeZipStoreEntries(entries);
+    } catch(err){
+      return arrBuf;
+    }
+  }
   // Builds a workbook in the same layout as the downloadable template (show-info
   // rows, then a Type/Name/Minutes/Seconds/Notes/Color table) so a saved show
   // opens and edits cleanly in Excel, and re-imports with full fidelity —
@@ -2064,6 +2220,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     if(typeof XLSX !== 'undefined'){
       var wb = buildShowWorkbook(data);
       var arrBuf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+      arrBuf = applyColumnWrapText(arrBuf, 'E'); // Notes is column E — wrap it so multi-line notes read properly in Excel
       var blob = new Blob([arrBuf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       downloadBlob(blob, slugify(data.showName) + '-' + datePart + '.xlsx');
     } else {
@@ -2341,7 +2498,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     '<title>'+escapeHtml(el.showName.value || 'Running Order')+' — Running Order</title>'+
     '<style>'+
       '*{box-sizing:border-box;}'+
-      'body{font-family:"Helvetica Neue",Arial,Helvetica,sans-serif;color:#1a1f2e;margin:0;padding:0 0 34px;background:#fff;'+
+      'body{font-family:Rockwell,"Rockwell Nova","Roboto Slab",Georgia,"Times New Roman",serif;color:#1a1f2e;margin:0;padding:0 0 34px;background:#fff;'+
         '-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
       '.toolbar{padding:16px 32px 0;}'+
       '.toolbar button{font-family:inherit;font-size:13px;padding:8px 16px;margin-right:8px;border:1px solid #16213F;border-radius:6px;background:#16213F;color:#fff;cursor:pointer;font-weight:600;}'+
