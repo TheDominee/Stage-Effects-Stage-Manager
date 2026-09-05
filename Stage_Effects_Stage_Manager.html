@@ -302,10 +302,12 @@
   .cue-file-hint{font-size:11px;color:var(--text-dim);}
   .show-meta-row{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;}
   .show-meta-row label{font-size:11.5px;color:var(--text-dim);display:flex;flex-direction:column;gap:3px;}
-  .show-meta-row input[type=time]{
+  .show-meta-row input[type=time],
+  .show-meta-row input[type=text]{
     background:var(--input-bg);border:1px solid var(--hairline);color:var(--text);
     border-radius:6px;padding:5px 8px;font-family:var(--mono);
   }
+  .show-meta-row input[type=text]{ width:150px; font-family:inherit; }
   .cue-add-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;}
   .custom-kind-chip{display:inline-flex;align-items:center;gap:0;}
   .custom-kind-add{border-radius:6px 0 0 6px;}
@@ -387,13 +389,23 @@
       <div class="cue-file-row">
         <button class="btn small ghost" id="saveShowBtn">&#128190; Save Show</button>
         <button class="btn small ghost" id="loadShowBtn">&#128194; Load Show</button>
+        <button class="btn small ghost" id="printShowBtn">&#128424; Print</button>
         <input type="file" id="loadShowInput" accept=".json,application/json" hidden>
         <span class="cue-file-hint">Save this running order to a file, or load one from a previous show or another computer.</span>
       </div>
 
       <div class="show-meta-row">
+        <label>Venue
+          <input type="text" id="showVenue" maxlength="80" spellcheck="false" placeholder="e.g. Sun Arena">
+        </label>
+        <label>Doors
+          <input type="time" id="showDoors">
+        </label>
         <label>Show start time
           <input type="time" id="showStartTime">
+        </label>
+        <label>Curfew
+          <input type="time" id="showCurfew">
         </label>
         <button class="btn small ghost" id="clearListBtn">Clear all</button>
         <div class="spacer"></div>
@@ -598,7 +610,10 @@
   var cueList = loadJSON('sm_cue_list', []);
   var customKinds = loadJSON('sm_custom_kinds', []); // [{id, label, color}] user-defined cue types
   var showName = loadJSON('sm_show_name', 'Untitled Show');
+  var showVenue = loadJSON('sm_show_venue', '');
+  var showDoors = loadJSON('sm_show_doors', '');
   var showStartTime = loadJSON('sm_show_start', '');
+  var showCurfew = loadJSON('sm_show_curfew', '');
   var controlTheme = loadJSON('sm_theme_control', 'dark');
   var presenterTheme = loadJSON('sm_theme_presenter', 'dark');
   var presenterScale = loadJSON('sm_timer_scale', 1);
@@ -647,6 +662,7 @@
     cueTotal: document.getElementById('cueTotal'),
     saveShowBtn: document.getElementById('saveShowBtn'),
     loadShowBtn: document.getElementById('loadShowBtn'),
+    printShowBtn: document.getElementById('printShowBtn'),
     loadShowInput: document.getElementById('loadShowInput'),
     addPerformerBtn: document.getElementById('addPerformerBtn'),
     addChangeoverBtn: document.getElementById('addChangeoverBtn'),
@@ -654,7 +670,10 @@
     addCustomKindBtn: document.getElementById('addCustomKindBtn'),
     clearListBtn: document.getElementById('clearListBtn'),
     testFlashBtn: document.getElementById('testFlashBtn'),
+    showVenue: document.getElementById('showVenue'),
+    showDoors: document.getElementById('showDoors'),
     showStartTime: document.getElementById('showStartTime'),
+    showCurfew: document.getElementById('showCurfew'),
     endClockDial: document.getElementById('endClockDial'),
     endClockLabel: document.getElementById('endClockLabel'),
     scaleSlider: document.getElementById('scaleSlider'),
@@ -681,7 +700,10 @@
   };
 
   el.showName.value = showName;
+  el.showVenue.value = showVenue;
+  el.showDoors.value = showDoors;
   el.showStartTime.value = showStartTime;
+  el.showCurfew.value = showCurfew;
 
   /* ---------------- broadcast (public link) ----------------
      Two backends:
@@ -1118,7 +1140,10 @@
   function persist(){
     saveJSON('sm_cue_list', cueList);
     saveJSON('sm_show_name', el.showName.value);
+    saveJSON('sm_show_venue', el.showVenue.value);
+    saveJSON('sm_show_doors', el.showDoors.value);
     saveJSON('sm_show_start', el.showStartTime.value);
+    saveJSON('sm_show_curfew', el.showCurfew.value);
   }
 
   /* ---------------- cue list rendering ---------------- */
@@ -1895,10 +1920,13 @@
   el.saveShowBtn.addEventListener('click', function(){
     var data = {
       kind: 'stage-effects-show',
-      version: 2,
+      version: 3,
       savedAt: new Date().toISOString(),
       showName: el.showName.value || '',
+      showVenue: el.showVenue.value || '',
+      showDoors: el.showDoors.value || '',
       showStartTime: el.showStartTime.value || '',
+      showCurfew: el.showCurfew.value || '',
       countMode: countMode,
       customKinds: customKinds.map(function(k){ return { id: k.id, label: k.label, color: k.color }; }),
       cueList: cueList.map(function(c){
@@ -1982,7 +2010,10 @@
         return cue;
       });
       if(typeof data.showName === 'string') el.showName.value = data.showName;
+      if(typeof data.showVenue === 'string') el.showVenue.value = data.showVenue;
+      if(typeof data.showDoors === 'string') el.showDoors.value = data.showDoors;
       if(typeof data.showStartTime === 'string') el.showStartTime.value = data.showStartTime;
+      if(typeof data.showCurfew === 'string') el.showCurfew.value = data.showCurfew;
       if(data.countMode === 'up' || data.countMode === 'down') setCountMode(data.countMode);
 
       persist();
@@ -1994,6 +2025,98 @@
     reader.onerror = function(){ alert('Could not read that file.'); };
     reader.readAsText(file);
   });
+
+  /* ---------------- print running order ---------------- */
+  function printRunningOrder(){
+    var sched = computeSchedule();
+    var totalSec = cueList.reduce(function(a,c){ return a + c.duration; }, 0);
+
+    var rowsHtml = cueList.map(function(c, idx){
+      var typeLabel, badgeColor;
+      if(c.type === 'changeover'){
+        typeLabel = 'Changeover'; badgeColor = '#b8860b';
+      } else if(isCustomType(c.type)){
+        typeLabel = c.kindLabel || 'Custom'; badgeColor = c.kindColor || '#8890a8';
+      } else {
+        typeLabel = 'Performance'; badgeColor = '#2f5fa8';
+      }
+      var badgeBg = hexToRgba(badgeColor, 0.14);
+      return '<tr>'+
+        '<td class="idx">'+(idx+1)+'</td>'+
+        '<td><span class="type-badge" style="background:'+badgeBg+';color:'+badgeColor+';border-color:'+badgeColor+'">'+escapeHtml(typeLabel)+'</span></td>'+
+        '<td class="name">'+escapeHtml(c.name || '')+'</td>'+
+        '<td class="sched">'+escapeHtml(sched[idx] || '—')+'</td>'+
+        '<td class="dur">'+fmt(c.duration)+'</td>'+
+      '</tr>';
+    }).join('');
+
+    function metaCell(label, value){
+      if(!value) return '';
+      return '<div class="meta-cell"><span class="meta-label">'+escapeHtml(label)+'</span><span class="meta-value">'+escapeHtml(value)+'</span></div>';
+    }
+    var metaHtml =
+      metaCell('Venue', el.showVenue.value.trim()) +
+      metaCell('Doors', el.showDoors.value) +
+      metaCell('Show start', el.showStartTime.value) +
+      metaCell('Curfew', el.showCurfew.value);
+
+    var printedAt = fmtClock(new Date()) + ' on ' + new Date().toLocaleDateString();
+
+    var html = ''+
+    '<!doctype html><html><head><meta charset="utf-8">'+
+    '<title>'+escapeHtml(el.showName.value || 'Running Order')+' — Running Order</title>'+
+    '<style>'+
+      '*{box-sizing:border-box;}'+
+      'body{font-family:Arial, Helvetica, sans-serif;color:#111;margin:0;padding:28px 32px;background:#fff;}'+
+      '.toolbar{margin-bottom:18px;}'+
+      '.toolbar button{font-family:inherit;font-size:13px;padding:7px 14px;margin-right:8px;border:1px solid #999;border-radius:6px;background:#f4f4f4;cursor:pointer;}'+
+      '.head{display:flex;align-items:center;gap:14px;border-bottom:3px solid #111;padding-bottom:14px;margin-bottom:18px;}'+
+      '.head .logo-plate{background:#0b0e1a;border-radius:8px;padding:8px 14px;display:flex;align-items:center;flex-shrink:0;}'+
+      '.head .logo-plate img{height:32px;display:block;}'+
+      '.head h1{font-size:22px;margin:0;}'+
+      '.head .sub{font-size:12px;color:#555;margin-top:3px;}'+
+      '.meta-row{display:flex;flex-wrap:wrap;gap:26px;margin-bottom:22px;}'+
+      '.meta-cell{display:flex;flex-direction:column;min-width:100px;}'+
+      '.meta-label{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#777;margin-bottom:2px;}'+
+      '.meta-value{font-size:15px;font-weight:700;}'+
+      'table{width:100%;border-collapse:collapse;}'+
+      'th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#555;border-bottom:2px solid #111;padding:6px 8px;}'+
+      'td{padding:8px;border-bottom:1px solid #ddd;font-size:13px;vertical-align:middle;}'+
+      'td.idx{color:#888;width:28px;}'+
+      'td.sched,td.dur{font-family:"Courier New",monospace;white-space:nowrap;}'+
+      '.type-badge{display:inline-block;border:1px solid;border-radius:4px;padding:2px 7px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;'+
+        '-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
+      '.total-row td{border-bottom:none;border-top:2px solid #111;font-weight:700;}'+
+      '.footer{margin-top:28px;padding-top:14px;border-top:1px solid #999;font-size:13px;color:#111;text-align:center;font-weight:700;letter-spacing:.4px;text-transform:uppercase;}'+
+      '@media print{ .toolbar{display:none;} body{padding:0 6mm;} }'+
+      '@page{ margin:14mm 12mm; }'+
+    '</style></head><body>'+
+    '<div class="toolbar"><button onclick="window.print()">Print</button><button onclick="window.close()">Close</button></div>'+
+    '<div class="head">'+
+      '<div class="logo-plate"><img src="'+LOGO_SRC+'" alt=""></div>'+
+      '<div><h1>'+escapeHtml(el.showName.value || 'Untitled Show')+'</h1>'+
+      '<div class="sub">Running order — printed '+escapeHtml(printedAt)+'</div></div>'+
+    '</div>'+
+    (metaHtml ? '<div class="meta-row">'+metaHtml+'</div>' : '')+
+    '<table><thead><tr><th></th><th>Type</th><th>Name</th><th>Sched.</th><th>Duration</th></tr></thead><tbody>'+
+    rowsHtml+
+    '<tr class="total-row"><td></td><td></td><td>Total running time</td><td></td><td>'+fmt(totalSec)+'</td></tr>'+
+    '</tbody></table>'+
+    '<div class="footer">Subject to Production call</div>'+
+    '</body></html>';
+
+    var w = window.open('', 'spaan_print_run_sheet', 'width=900,height=760');
+    if(!w){
+      alert('Pop-up blocked. Please allow pop-ups for this page, then click "Print" again.');
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    try{ w.focus(); }catch(e){}
+  }
+  el.printShowBtn.addEventListener('click', printRunningOrder);
+
   el.testFlashBtn.addEventListener('click', testFlash);
   el.sendMsgBtn.addEventListener('click', function(){ sendMessageToDisplay(el.msgInput.value); });
   el.clearMsgBtn.addEventListener('click', clearMessage);
@@ -2005,7 +2128,10 @@
     btn.addEventListener('click', function(){ sendMessageToDisplay(btn.getAttribute('data-preset')); });
   });
   el.showName.addEventListener('change', function(){ persist(); updatePresenter(); });
+  el.showVenue.addEventListener('change', persist);
+  el.showDoors.addEventListener('change', persist);
   el.showStartTime.addEventListener('change', function(){ persist(); renderCueList(); });
+  el.showCurfew.addEventListener('change', persist);
   el.actName.addEventListener('input', updatePresenter);
   el.autoAdvanceToggle.addEventListener('change', function(){
     el.autoStartToggle.disabled = !el.autoAdvanceToggle.checked;
