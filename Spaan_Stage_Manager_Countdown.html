@@ -382,10 +382,17 @@
   .crew-chat-msg .ccm-cue{font-weight:400;text-transform:none;letter-spacing:0;opacity:.85;}
   .crew-chat-msg.ccm-sm{align-self:flex-end;background:var(--warn-chip);color:var(--gold-accent);}
   .crew-chat-msg.ccm-crew{align-self:flex-start;background:var(--overlay-hover);color:var(--text);}
-  .crew-chat-input-row{display:flex;gap:6px;}
+  .crew-chat-input-row{display:flex;gap:6px;position:relative;}
   .crew-chat-input-row input{flex:1;background:var(--input-bg);border:1px solid var(--hairline);color:var(--text);
     border-radius:6px;padding:7px 9px;font-size:13px;}
   .crew-chat-input-row input:disabled{opacity:.5;}
+  .mention-dropdown{position:absolute;left:0;bottom:calc(100% + 6px);min-width:160px;max-width:260px;
+    background:var(--panel-bg,#1c2438);border:1px solid var(--hairline);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.35);
+    overflow:hidden;z-index:20;}
+  .mention-dropdown .mention-item{padding:7px 10px;font-size:13px;color:var(--text);cursor:pointer;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;}
+  .mention-dropdown .mention-item.active,.mention-dropdown .mention-item:hover{background:var(--gold-accent,#C9A94F);color:#1a1206;}
+  .mention-dropdown .mention-empty{padding:7px 10px;font-size:12px;color:var(--text-dim);font-style:italic;}
   .crew-chat-footer-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;}
   .crew-chat-footer-row .bc-status{margin:0;}
 
@@ -482,8 +489,9 @@
         <h3>Crew Chat <span class="bc-hint">(two-way messages with your Crew broadcast link &mdash; needs Broadcasting + the advanced Firebase setup)</span></h3>
         <div class="crew-chat-log" id="crewChatLog"><div class="crew-chat-empty" id="crewChatEmpty">No messages yet.</div></div>
         <div class="crew-chat-input-row">
-          <input type="text" id="crewChatInput" placeholder="Message to crew…" maxlength="300" disabled>
+          <input type="text" id="crewChatInput" placeholder="Message to crew… (type @ to mention someone)" maxlength="300" disabled>
           <button class="btn small gold" id="crewChatSendBtn" disabled>Send</button>
+          <div class="mention-dropdown" id="crewMentionDropdown" hidden></div>
         </div>
         <div class="crew-chat-footer-row">
           <div class="bc-status" id="crewChatStatus">Start Broadcasting with the advanced Firebase setup to enable Crew Chat.</div>
@@ -797,6 +805,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     bcViewerCount: document.getElementById('bcViewerCount'),
     crewChatLog: document.getElementById('crewChatLog'),
     crewChatInput: document.getElementById('crewChatInput'),
+    crewMentionDropdown: document.getElementById('crewMentionDropdown'),
     crewChatSendBtn: document.getElementById('crewChatSendBtn'),
     crewChatStatus: document.getElementById('crewChatStatus'),
     printCrewChatBtn: document.getElementById('printCrewChatBtn')
@@ -1159,10 +1168,14 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   /* Live viewer count — only possible in "advanced" (your own Firebase project)
      mode. The free "auto" backend (jsonblob.com) stores one shared document with
      no safe way for many viewers to register themselves without overwriting one
-     another, so it can't offer a viewer count. */
+     another, so it can't offer a viewer count. The same fetch also builds
+     crewRoster — the list of crew currently connected who've set a name on the
+     Crew page — which powers the "@" mention picker in Crew Chat below. */
+  var crewRoster = [];
   function pollViewerCount(){
     if(bcSettings.mode !== 'advanced' || !bcSettings.enabled || !bcSettings.dbUrl || !bcSettings.roomId){
       el.bcViewerCount.hidden = true;
+      crewRoster = [];
       return;
     }
     var url = bcSettings.dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(bcSettings.roomId) + '/viewers.json';
@@ -1172,12 +1185,18 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     }).then(function(data){
       var now = Date.now();
       var count = 0;
+      var roster = [];
       if(data){
         Object.keys(data).forEach(function(k){
           var v = data[k];
-          if(v && typeof v.lastSeen === 'number' && (now - v.lastSeen) < 20000) count++;
+          if(v && typeof v.lastSeen === 'number' && (now - v.lastSeen) < 20000){
+            count++;
+            var name = v.name ? String(v.name).trim() : '';
+            if(name && roster.indexOf(name) === -1) roster.push(name);
+          }
         });
       }
+      crewRoster = roster;
       el.bcViewerCount.hidden = false;
       el.bcViewerCount.textContent = count === 1 ? '👀 1 viewer connected' : ('👀 ' + count + ' viewers connected');
     }).catch(function(){
@@ -1259,14 +1278,95 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     if(!text) return;
     var id = genMsgId();
     el.crewChatInput.value = '';
+    crewMentionPicker.hide();
     fetch(base + '/' + id + '.json', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ from: 'sm', fromLabel: 'Stage Manager', text: text.slice(0,300), cueName: el.actName.value || '', ts: Date.now() })
     }).then(function(){ pollCrewChat(); }).catch(function(){});
   }
+  // "@" mention picker — typing "@" (optionally followed by a few letters)
+  // pops a list of crew currently connected on the Crew page (sourced from
+  // crewRoster, kept fresh by pollViewerCount above) so a message can be
+  // aimed at someone specific just by picking their name.
+  function createMentionPicker(inputEl, dropdownEl, getRoster){
+    var open = false, items = [], activeIdx = -1, mentionStart = -1;
+    function hide(){
+      open = false; items = []; activeIdx = -1; mentionStart = -1;
+      dropdownEl.hidden = true; dropdownEl.innerHTML = '';
+    }
+    function renderList(){
+      dropdownEl.innerHTML = '';
+      if(!items.length){
+        var empty = document.createElement('div');
+        empty.className = 'mention-empty';
+        empty.textContent = 'No matching crew online';
+        dropdownEl.appendChild(empty);
+        return;
+      }
+      items.forEach(function(name, i){
+        var row = document.createElement('div');
+        row.className = 'mention-item' + (i === activeIdx ? ' active' : '');
+        row.textContent = name;
+        row.addEventListener('mousedown', function(e){ e.preventDefault(); select(i); });
+        dropdownEl.appendChild(row);
+      });
+    }
+    function select(i){
+      if(i < 0 || i >= items.length){ hide(); return; }
+      var name = items[i];
+      var val = inputEl.value;
+      var caret = inputEl.selectionStart == null ? val.length : inputEl.selectionStart;
+      var before = val.slice(0, mentionStart);
+      var after = val.slice(caret);
+      var insert = '@' + name + ' ';
+      inputEl.value = before + insert + after;
+      var newCaret = (before + insert).length;
+      hide();
+      inputEl.focus();
+      if(inputEl.setSelectionRange) inputEl.setSelectionRange(newCaret, newCaret);
+    }
+    function updateFromInput(){
+      var roster = getRoster() || [];
+      if(!roster.length){ hide(); return; }
+      var val = inputEl.value;
+      var caret = inputEl.selectionStart == null ? val.length : inputEl.selectionStart;
+      var at = -1;
+      for(var i = caret - 1; i >= 0; i--){
+        var ch = val.charAt(i);
+        if(ch === '@'){ at = i; break; }
+        if(/\s/.test(ch)) break;
+      }
+      if(at === -1 || (at > 0 && !/\s/.test(val.charAt(at - 1)))){ hide(); return; }
+      var partial = val.slice(at + 1, caret).toLowerCase();
+      items = roster.filter(function(name){ return name.toLowerCase().indexOf(partial) === 0; });
+      mentionStart = at;
+      activeIdx = items.length ? 0 : -1;
+      open = true;
+      dropdownEl.hidden = false;
+      renderList();
+    }
+    inputEl.addEventListener('input', updateFromInput);
+    inputEl.addEventListener('blur', function(){ setTimeout(hide, 150); });
+    return {
+      hide: hide,
+      handleKeydown: function(e){
+        if(!open) return false;
+        if(e.key === 'ArrowDown'){ e.preventDefault(); activeIdx = (activeIdx+1) % Math.max(items.length,1); renderList(); return true; }
+        if(e.key === 'ArrowUp'){ e.preventDefault(); activeIdx = (activeIdx-1+Math.max(items.length,1)) % Math.max(items.length,1); renderList(); return true; }
+        if(e.key === 'Enter' || e.key === 'Tab'){
+          if(items.length){ e.preventDefault(); select(activeIdx); return true; }
+          hide(); return false;
+        }
+        if(e.key === 'Escape'){ hide(); return true; }
+        return false;
+      }
+    };
+  }
+  var crewMentionPicker = createMentionPicker(el.crewChatInput, el.crewMentionDropdown, function(){ return crewRoster; });
   el.crewChatSendBtn.addEventListener('click', sendCrewChatMsg);
   el.crewChatInput.addEventListener('keydown', function(e){
+    if(crewMentionPicker.handleKeydown(e)) return;
     if(e.key === 'Enter'){ e.preventDefault(); sendCrewChatMsg(); }
   });
 
@@ -2475,6 +2575,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     crewMsgsCache = {};
     crewChatRenderedCount = 0;
     if(el.crewChatInput) el.crewChatInput.value = '';
+    if(typeof crewMentionPicker !== 'undefined') crewMentionPicker.hide();
     if(typeof renderCrewChat === 'function') renderCrewChat();
     setBroadcastUI();
     el.bcStatusText.textContent = 'New show, new broadcast room — click Start Broadcasting to get a fresh link (old links stop working).';

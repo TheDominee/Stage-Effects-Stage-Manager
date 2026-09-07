@@ -115,11 +115,18 @@
   .chat-msg .chat-cue{font-weight:400;text-transform:none;letter-spacing:0;opacity:.85;}
   .chat-msg.from-sm{align-self:flex-start;background:rgba(163,130,47,.22);color:var(--text);border:1px solid rgba(163,130,47,.4);}
   .chat-msg.from-crew{align-self:flex-end;background:rgba(128,128,128,.16);color:var(--text);border:1px solid rgba(128,128,128,.3);}
-  #chatInputRow{display:flex;gap:6px;padding:10px 14px;border-top:1px solid rgba(128,128,128,.2);}
+  #chatInputRow{display:flex;gap:6px;padding:10px 14px;border-top:1px solid rgba(128,128,128,.2);position:relative;}
   #chatInputRow input{flex:1;background:rgba(128,128,128,.12);border:1px solid rgba(128,128,128,.3);color:var(--text);
     border-radius:8px;padding:8px 10px;font-size:13px;}
   #chatInputRow button{background:linear-gradient(180deg,var(--gold-2),var(--gold));color:#1a1206;border:none;
     border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;}
+  #chatMentionDropdown{position:absolute;left:14px;right:14px;bottom:calc(100% + 4px);max-width:none;
+    background:#161b2c;border:1px solid rgba(128,128,128,.3);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.4);
+    overflow:hidden;z-index:20;}
+  #chatMentionDropdown .mention-item{padding:8px 12px;font-size:13px;color:var(--text);cursor:pointer;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;}
+  #chatMentionDropdown .mention-item.active,#chatMentionDropdown .mention-item:hover{background:var(--gold,#C9A94F);color:#1a1206;}
+  #chatMentionDropdown .mention-empty{padding:8px 12px;font-size:12px;color:var(--dim);font-style:italic;}
 </style>
 </head>
 <body>
@@ -159,8 +166,9 @@
   <div id="chatNameRow"><input type="text" id="chatNameInput" placeholder="Your name/role (e.g. Lighting)" maxlength="40"></div>
   <div id="chatLog"><div id="chatEmpty">No messages yet.</div></div>
   <div id="chatInputRow">
-    <input type="text" id="chatMsgInput" placeholder="Message the stage manager…" maxlength="300">
+    <input type="text" id="chatMsgInput" placeholder="Message… (type @ to mention someone)" maxlength="300">
     <button id="chatSendBtn">Send</button>
+    <div id="chatMentionDropdown" hidden></div>
   </div>
 </div>
 
@@ -215,6 +223,7 @@
     chatNameInput: document.getElementById('chatNameInput'),
     chatLog: document.getElementById('chatLog'),
     chatMsgInput: document.getElementById('chatMsgInput'),
+    chatMentionDropdown: document.getElementById('chatMentionDropdown'),
     chatSendBtn: document.getElementById('chatSendBtn')
   };
 
@@ -289,6 +298,8 @@
      simply never wired up or shown, since the DOM elements are removed. */
   var chatOpen = false;
   var chatLastSeenTs = Date.now();
+  var otherCrewRoster = [];
+  var crewMentionPicker = null;
 
   function chatWritable(){ return ENABLE_CREW_CHAT && !blobUrl && !!dbUrl && !!roomId; }
 
@@ -310,6 +321,7 @@
     var label = (loadJSON('sm_crew_name','') || '').toString().trim().slice(0,40) || 'Crew';
     var id = genMsgId();
     el.chatMsgInput.value = '';
+    if(crewMentionPicker) crewMentionPicker.hide();
     var url = dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(roomId) + '/crewMsgs/' + id + '.json';
     fetch(url, {
       method: 'PUT',
@@ -366,6 +378,111 @@
     renderChatBadge();
   }
 
+  // "@" mention picker — typing "@" pops a list of who's in this broadcast
+  // (the Stage Manager, plus any other crew who've set a name) so a message
+  // can be aimed at someone specific just by picking them. Generic helper,
+  // shared in shape with the same feature on the control panel's Crew Chat.
+  function createMentionPicker(inputEl, dropdownEl, getRoster){
+    var open = false, items = [], activeIdx = -1, mentionStart = -1;
+    function hide(){
+      open = false; items = []; activeIdx = -1; mentionStart = -1;
+      dropdownEl.hidden = true; dropdownEl.innerHTML = '';
+    }
+    function renderList(){
+      dropdownEl.innerHTML = '';
+      if(!items.length){
+        var empty = document.createElement('div');
+        empty.className = 'mention-empty';
+        empty.textContent = 'No matching names';
+        dropdownEl.appendChild(empty);
+        return;
+      }
+      items.forEach(function(name, i){
+        var row = document.createElement('div');
+        row.className = 'mention-item' + (i === activeIdx ? ' active' : '');
+        row.textContent = name;
+        row.addEventListener('mousedown', function(e){ e.preventDefault(); select(i); });
+        dropdownEl.appendChild(row);
+      });
+    }
+    function select(i){
+      if(i < 0 || i >= items.length){ hide(); return; }
+      var name = items[i];
+      var val = inputEl.value;
+      var caret = inputEl.selectionStart == null ? val.length : inputEl.selectionStart;
+      var before = val.slice(0, mentionStart);
+      var after = val.slice(caret);
+      var insert = '@' + name + ' ';
+      inputEl.value = before + insert + after;
+      var newCaret = (before + insert).length;
+      hide();
+      inputEl.focus();
+      if(inputEl.setSelectionRange) inputEl.setSelectionRange(newCaret, newCaret);
+    }
+    function updateFromInput(){
+      var roster = getRoster() || [];
+      if(!roster.length){ hide(); return; }
+      var val = inputEl.value;
+      var caret = inputEl.selectionStart == null ? val.length : inputEl.selectionStart;
+      var at = -1;
+      for(var i = caret - 1; i >= 0; i--){
+        var ch = val.charAt(i);
+        if(ch === '@'){ at = i; break; }
+        if(/\s/.test(ch)) break;
+      }
+      if(at === -1 || (at > 0 && !/\s/.test(val.charAt(at - 1)))){ hide(); return; }
+      var partial = val.slice(at + 1, caret).toLowerCase();
+      items = roster.filter(function(name){ return name.toLowerCase().indexOf(partial) === 0; });
+      mentionStart = at;
+      activeIdx = items.length ? 0 : -1;
+      open = true;
+      dropdownEl.hidden = false;
+      renderList();
+    }
+    inputEl.addEventListener('input', updateFromInput);
+    inputEl.addEventListener('blur', function(){ setTimeout(hide, 150); });
+    return {
+      hide: hide,
+      handleKeydown: function(e){
+        if(!open) return false;
+        if(e.key === 'ArrowDown'){ e.preventDefault(); activeIdx = (activeIdx+1) % Math.max(items.length,1); renderList(); return true; }
+        if(e.key === 'ArrowUp'){ e.preventDefault(); activeIdx = (activeIdx-1+Math.max(items.length,1)) % Math.max(items.length,1); renderList(); return true; }
+        if(e.key === 'Enter' || e.key === 'Tab'){
+          if(items.length){ e.preventDefault(); select(activeIdx); return true; }
+          hide(); return false;
+        }
+        if(e.key === 'Escape'){ hide(); return true; }
+        return false;
+      }
+    };
+  }
+
+  // Polls the same "viewers" presence path the heartbeat below writes to, to
+  // find other named crew currently connected (excluding this device). The
+  // Stage Manager is always offered too, since they don't send a heartbeat.
+  function pollCrewRoster(){
+    if(!chatWritable()) return;
+    var url = dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(roomId) + '/viewers.json';
+    fetch(url, { cache: 'no-store' }).then(function(r){
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function(data){
+      var now = Date.now();
+      var roster = ['Stage Manager'];
+      if(data){
+        Object.keys(data).forEach(function(k){
+          if(k === viewerId) return;
+          var v = data[k];
+          if(v && typeof v.lastSeen === 'number' && (now - v.lastSeen) < 20000){
+            var name = v.name ? String(v.name).trim() : '';
+            if(name && roster.indexOf(name) === -1) roster.push(name);
+          }
+        });
+      }
+      otherCrewRoster = roster;
+    }).catch(function(){});
+  }
+
   if(!ENABLE_CREW_CHAT){
     el.chatToggleBtn.remove();
     el.chatPanel.remove();
@@ -373,14 +490,19 @@
     el.chatNameInput.value = loadJSON('sm_crew_name','');
     el.chatNameInput.addEventListener('change', function(){
       saveJSON('sm_crew_name', el.chatNameInput.value.trim().slice(0,40));
+      sendHeartbeat();
     });
+    crewMentionPicker = createMentionPicker(el.chatMsgInput, el.chatMentionDropdown, function(){ return otherCrewRoster; });
     el.chatSendBtn.addEventListener('click', sendChatMessage);
     el.chatMsgInput.addEventListener('keydown', function(e){
+      if(crewMentionPicker.handleKeydown(e)) return;
       if(e.key === 'Enter'){ e.preventDefault(); sendChatMessage(); }
     });
     el.chatToggleBtn.addEventListener('click', function(){ chatOpen ? closeChat() : openChat(); });
     el.chatCloseBtn.addEventListener('click', closeChat);
     refreshChatAvailability();
+    setInterval(pollCrewRoster, 5000);
+    pollCrewRoster();
   }
 
   /* ---- clock ---- */
@@ -652,10 +774,14 @@
   function sendHeartbeat(){
     if(blobUrl || !dbUrl || !roomId) return;
     var url = dbUrl.replace(/\/+$/, '') + '/broadcasts/' + encodeURIComponent(roomId) + '/viewers/' + viewerId + '.json';
+    // Crew builds also report the name typed into the chat panel, so the
+    // control panel's "@" mention picker (and this page's own) can offer it —
+    // the public viewer build has no chat name, so this is just '' there.
+    var name = (ENABLE_CREW_CHAT && el.chatNameInput) ? el.chatNameInput.value.trim().slice(0,40) : '';
     fetch(url, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lastSeen: Date.now() })
+      body: JSON.stringify({ lastSeen: Date.now(), name: name })
     }).catch(function(){});
   }
   function startHeartbeat(){
