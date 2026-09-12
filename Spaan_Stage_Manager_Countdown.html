@@ -575,8 +575,8 @@
           <div class="crew-talk-controls" id="voiceControls" hidden>
             <div class="voice-target-row" id="voiceTargetRow"></div>
             <div class="voice-talk-row">
-              <button class="voice-talk-btn" id="voiceTalkBtn" disabled title="Hold this button, or hold the &quot;T&quot; key, to talk">Push To Talk</button>
-              <button class="btn small ghost" id="voiceAlwaysOnBtn" type="button" title="Toggle hands-free Always On mic (mic stays live, no need to hold Push To Talk)">Always On (hands-free)</button>
+              <button class="btn small ghost" id="voiceLockBtn" type="button" disabled title="Tap to lock hands-free talking on, so you don't have to hold the button — tap again to release. You can also hold this button, or the &quot;T&quot; key, and swipe up to lock — same gesture as on the Crew page.">&#128275;</button>
+              <button class="voice-talk-btn" id="voiceTalkBtn" disabled title="Hold this button, or hold the &quot;T&quot; key, to talk — hold and swipe up, or tap the lock button, to lock it on hands-free">Push To Talk</button>
               <button class="btn small ghost" id="voiceLeaveBtn">Leave Voice</button>
             </div>
             <div class="bc-status" id="voiceStatus"></div>
@@ -950,7 +950,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     voiceControls: document.getElementById('voiceControls'),
     voiceTargetRow: document.getElementById('voiceTargetRow'),
     voiceTalkBtn: document.getElementById('voiceTalkBtn'),
-    voiceAlwaysOnBtn: document.getElementById('voiceAlwaysOnBtn'),
+    voiceLockBtn: document.getElementById('voiceLockBtn'),
     voiceLeaveBtn: document.getElementById('voiceLeaveBtn'),
     voiceStatus: document.getElementById('voiceStatus'),
     voiceAudioSinks: document.getElementById('voiceAudioSinks'),
@@ -1780,7 +1780,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   var ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }];
   var voiceJoined = false;
   var transmitting = false;
-  var alwaysOnVoice = false;
+  var talkLocked = false; // hands-free: click the lock button, or hold Push To Talk and swipe, to keep talking without holding — same as the Crew page
   var talkTarget = 'everyone'; // 'everyone' or a peerId
   var localVoiceStream = null;
   var localVoiceTrack = null;
@@ -2012,8 +2012,19 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   function setTransmitting(on){
     transmitting = on;
     el.voiceTalkBtn.classList.toggle('talking', on);
-    el.voiceTalkBtn.textContent = on ? '🔴 Talking…' : 'Push To Talk';
+    if(on){
+      el.voiceTalkBtn.textContent = talkLocked ? '🔒 Locked — tap to stop' : '🔴 Talking…';
+    } else {
+      el.voiceTalkBtn.textContent = 'Push To Talk';
+    }
     applyVoiceRouting();
+  }
+
+  function setTalkLocked(on){
+    talkLocked = on;
+    el.voiceLockBtn.classList.toggle('gold', on);
+    el.voiceLockBtn.classList.toggle('ghost', !on);
+    el.voiceLockBtn.textContent = on ? '🔒' : '🔓';
   }
 
   function joinVoice(){
@@ -2029,6 +2040,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       el.voiceJoinBtn.hidden = true;
       el.voiceControls.hidden = false;
       el.voiceTalkBtn.disabled = false;
+      el.voiceLockBtn.disabled = false;
       sendVoicePresence(true);
       voicePresenceTimer = setInterval(function(){ sendVoicePresence(true); }, 8000);
       voiceSigPollTimer = setInterval(pollVoiceSignaling, 1500);
@@ -2060,18 +2072,10 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     localVoiceTrack = null;
     el.voiceJoinBtn.hidden = false;
     el.voiceControls.hidden = true;
-    setAlwaysOnVoiceUI(false);
-    alwaysOnVoice = false;
+    el.voiceLockBtn.disabled = true;
+    setTalkLocked(false);
     el.voiceTalkBtn.classList.remove('talking');
     el.voiceTalkBtn.textContent = 'Push To Talk';
-  }
-
-  // Always On (hands-free) is a toggle button rather than a checkbox — swap
-  // it between the plain "ghost" look and the gold "engaged" look used
-  // elsewhere in the app for an active toggle.
-  function setAlwaysOnVoiceUI(on){
-    el.voiceAlwaysOnBtn.classList.toggle('gold', on);
-    el.voiceAlwaysOnBtn.classList.toggle('ghost', !on);
   }
 
   function updateSpeakingIndicators(){
@@ -2093,25 +2097,48 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
   el.voiceJoinBtn.addEventListener('click', joinVoice);
   el.voiceLeaveBtn.addEventListener('click', leaveVoice);
-  el.voiceAlwaysOnBtn.addEventListener('click', function(){
-    alwaysOnVoice = !alwaysOnVoice;
-    setAlwaysOnVoiceUI(alwaysOnVoice);
-    el.voiceTalkBtn.disabled = alwaysOnVoice;
-    setTransmitting(alwaysOnVoice);
-  });
-  // Pointer events (not mouse/touch separately) so this works the same with
-  // a mouse click-and-hold or a finger press-and-hold on a phone/tablet.
+  // Push To Talk: hold to talk (as before). Two ways to lock it on hands-free
+  // instead of holding the whole time — tap the dedicated lock button, or
+  // hold this button and drag/swipe away from where the hold started (the
+  // familiar WhatsApp-style voice-message lock gesture). Tapping this
+  // button again while locked stops talking and releases the lock. This is
+  // the same gesture/behavior as the Crew page's Push To Talk button.
+  var talkHoldStart = null; // {x,y} of the pointerdown that began this hold, or null
+  var TALK_SWIPE_LOCK_PX = 32;
   el.voiceTalkBtn.addEventListener('pointerdown', function(e){
-    if(alwaysOnVoice) return;
     e.preventDefault();
+    if(talkLocked){
+      setTalkLocked(false);
+      setTransmitting(false);
+      return;
+    }
+    talkHoldStart = { x: e.clientX, y: e.clientY };
     el.voiceTalkBtn.setPointerCapture(e.pointerId);
     setTransmitting(true);
   });
+  el.voiceTalkBtn.addEventListener('pointermove', function(e){
+    if(!talkHoldStart || talkLocked || !transmitting) return;
+    var dx = e.clientX - talkHoldStart.x, dy = e.clientY - talkHoldStart.y;
+    if(Math.sqrt(dx*dx + dy*dy) >= TALK_SWIPE_LOCK_PX){
+      setTalkLocked(true);
+      setTransmitting(true); // refresh the button label to the locked wording
+    }
+  });
   ['pointerup','pointercancel','pointerleave'].forEach(function(evt){
     el.voiceTalkBtn.addEventListener(evt, function(){
-      if(alwaysOnVoice) return;
+      talkHoldStart = null;
+      if(talkLocked) return; // stays talking hands-free until tapped again or the lock button is used
       setTransmitting(false);
     });
+  });
+  el.voiceLockBtn.addEventListener('click', function(){
+    if(talkLocked){
+      setTalkLocked(false);
+      setTransmitting(false);
+    } else {
+      setTalkLocked(true);
+      setTransmitting(true); // one-tap hands-free: click the lock, start talking immediately
+    }
   });
 
   /* ---------------- theme ---------------- */
@@ -3973,7 +4000,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     // "T" is push-to-talk on this side (Space is already the timer start/pause
     // shortcut, so it stays reserved for that here — unlike the Crew page,
     // which has no such conflict and uses Space for push-to-talk).
-    else if((e.key === 't' || e.key === 'T') && voiceJoined && !alwaysOnVoice && !el.voiceTalkBtn.disabled){
+    else if((e.key === 't' || e.key === 'T') && voiceJoined && !el.voiceTalkBtn.disabled){
       e.preventDefault();
       if(e.repeat) return;
       setTransmitting(true);
@@ -4015,7 +4042,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     if(e.key !== 't' && e.key !== 'T') return;
     var tag = (e.target && e.target.tagName) || '';
     if(tag === 'INPUT' || tag === 'TEXTAREA') return;
-    if(voiceJoined && !alwaysOnVoice){ setTransmitting(false); }
+    if(voiceJoined && !talkLocked){ setTransmitting(false); }
   });
 
   window.addEventListener('beforeunload', persist);
