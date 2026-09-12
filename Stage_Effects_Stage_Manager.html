@@ -404,7 +404,6 @@
   .voice-talk-btn.talking{background:linear-gradient(180deg,#4fd787,#2fa85a);color:#08300f;
     box-shadow:0 0 0 3px rgba(62,207,106,.35), inset 0 2px 5px rgba(0,0,0,.28);
     transform:translateY(2px);}
-  .voice-always-on{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);white-space:nowrap;}
   .crew-chat-box{margin-top:18px;padding-top:16px;border-top:1px solid var(--hairline);}
   .crew-chat-box h3{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);}
   .crew-chat-log{max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:10px;padding:8px;
@@ -415,10 +414,14 @@
   .crew-chat-msg .ccm-cue{font-weight:400;text-transform:none;letter-spacing:0;opacity:.85;}
   .crew-chat-msg.ccm-sm{align-self:flex-end;background:var(--warn-chip);color:var(--gold-accent);}
   .crew-chat-msg.ccm-crew{align-self:flex-start;background:var(--overlay-hover);color:var(--text);}
+  .ccm-img{max-width:200px;max-height:200px;border-radius:6px;display:block;margin-top:4px;object-fit:cover;cursor:zoom-in;}
+  .ccm-img.ccm-img-expanded{max-width:100%;max-height:none;object-fit:contain;}
   .crew-chat-input-row{display:flex;gap:6px;position:relative;}
-  .crew-chat-input-row input{flex:1;background:var(--input-bg);border:1px solid var(--hairline);color:var(--text);
+  .crew-chat-input-row input[type="text"]{flex:1;background:var(--input-bg);border:1px solid var(--hairline);color:var(--text);
     border-radius:6px;padding:7px 9px;font-size:13px;}
   .crew-chat-input-row input:disabled{opacity:.5;}
+  .crew-chat-input-row #crewChatAttachBtn{flex:none;}
+  .crew-chat-input-row #crewChatAttachBtn:disabled{opacity:.5;cursor:not-allowed;}
   .mention-dropdown{position:absolute;left:0;bottom:calc(100% + 6px);min-width:160px;max-width:260px;
     background:var(--panel-bg,#1c2438);border:1px solid var(--hairline);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.35);
     overflow:hidden;z-index:20;}
@@ -526,7 +529,7 @@
             <div class="voice-target-row" id="voiceTargetRow"></div>
             <div class="voice-talk-row">
               <button class="voice-talk-btn" id="voiceTalkBtn" disabled title="Hold this button, or hold the &quot;T&quot; key, to talk">Push To Talk</button>
-              <label class="voice-always-on"><input type="checkbox" id="voiceAlwaysOn"> Always On (hands-free)</label>
+              <button class="btn small ghost" id="voiceAlwaysOnBtn" type="button" title="Toggle hands-free Always On mic (mic stays live, no need to hold Push To Talk)">Always On (hands-free)</button>
               <button class="btn small ghost" id="voiceLeaveBtn">Leave Voice</button>
             </div>
             <div class="bc-status" id="voiceStatus"></div>
@@ -539,6 +542,8 @@
         <h3>Crew Chat <span class="bc-hint">(two-way messages with your Crew broadcast link &mdash; needs Broadcasting + the advanced Firebase setup)</span></h3>
         <div class="crew-chat-log" id="crewChatLog"><div class="crew-chat-empty" id="crewChatEmpty">No messages yet.</div></div>
         <div class="crew-chat-input-row">
+          <button class="btn small ghost" id="crewChatAttachBtn" type="button" title="Send a photo" disabled>&#128247;</button>
+          <input type="file" id="crewChatImgInput" accept="image/*" hidden>
           <input type="text" id="crewChatInput" placeholder="Message to crew… (type @ to mention someone)" maxlength="300" disabled>
           <button class="btn small gold" id="crewChatSendBtn" disabled>Send</button>
           <div class="mention-dropdown" id="crewMentionDropdown" hidden></div>
@@ -662,51 +667,55 @@
 
       <div class="broadcast-box">
         <h3>Broadcast to a Public Link <span class="bc-hint">(needs internet &mdash; outside viewers need no login)</span></h3>
-        <div class="bc-row">
-          <label>Viewer page URL <span class="bc-optional">(where you hosted viewer.html &mdash; one-time setup, see guide)</span>
-            <input type="text" id="bcViewerUrl" placeholder="https://yoursite.com/viewer.html" spellcheck="false">
-          </label>
-        </div>
-        <div class="bc-row">
-          <label>Crew page URL <span class="bc-optional">(where you hosted Stage_Effects_Crew.html &mdash; shows the timer plus two-way chat with you; chat needs the advanced Firebase setup below)</span>
-            <input type="text" id="bcCrewUrl" placeholder="https://yoursite.com/crew.html" spellcheck="false">
-          </label>
-        </div>
-        <div class="bc-adv-toggle-row">
-          <label class="bc-adv-check"><input type="checkbox" id="bcAdvToggle"> Use my own Firebase project instead <span class="bc-optional">(more control/reliability)</span></label>
-        </div>
-        <div class="bc-row bc-row-split" id="bcAdvFields" hidden>
-          <label>Firebase Realtime Database URL
-            <input type="text" id="bcDbUrl" placeholder="https://your-project-default-rtdb.firebaseio.com" spellcheck="false">
-          </label>
-          <label>Room ID
-            <input type="text" id="bcRoomId" placeholder="show-abc123" spellcheck="false">
-          </label>
-        </div>
         <div class="bc-actions">
           <button class="btn small gold" id="bcToggleBtn">Start Broadcasting</button>
           <button class="btn small ghost" id="bcCopyLinkBtn">Copy Viewer Link</button>
           <button class="btn small ghost" id="bcCopyCrewLinkBtn">Copy Crew Link</button>
           <button class="btn small ghost" id="bcNewLinkBtn">New Broadcast Link</button>
         </div>
-        <div class="bc-link-row" id="bcLinkRow" hidden>
-          <label>This computer's broadcast link <span class="bc-optional">(click the box to select it, or use Copy)</span>
-            <div class="bc-link-copy">
-              <input type="text" id="bcLinkDisplay" readonly spellcheck="false" aria-label="Broadcast viewer link">
-              <button class="btn small ghost" id="bcLinkDisplayCopyBtn">Copy</button>
-            </div>
-          </label>
-        </div>
-        <div class="bc-link-row" id="bcCrewLinkRow" hidden>
-          <label>This computer's crew link <span class="bc-optional">(click the box to select it, or use Copy)</span>
-            <div class="bc-link-copy">
-              <input type="text" id="bcCrewLinkDisplay" readonly spellcheck="false" aria-label="Crew broadcast link">
-              <button class="btn small ghost" id="bcCrewLinkDisplayCopyBtn">Copy</button>
-            </div>
-          </label>
-        </div>
         <div class="bc-status" id="bcStatusText">Not broadcasting &mdash; no account needed, a broadcast room is created automatically when you start.</div>
         <div class="bc-status" id="bcViewerCount" hidden></div>
+
+        <details class="bc-advanced">
+          <summary>Advanced settings <span class="bc-optional">(custom hosting, your own Firebase project, direct links)</span></summary>
+          <div class="bc-row">
+            <label>Viewer page URL <span class="bc-optional">(where you hosted viewer.html &mdash; one-time setup, see guide)</span>
+              <input type="text" id="bcViewerUrl" placeholder="https://yoursite.com/viewer.html" spellcheck="false">
+            </label>
+          </div>
+          <div class="bc-row">
+            <label>Crew page URL <span class="bc-optional">(where you hosted Stage_Effects_Crew.html &mdash; shows the timer plus two-way chat with you; chat needs the advanced Firebase setup below)</span>
+              <input type="text" id="bcCrewUrl" placeholder="https://yoursite.com/crew.html" spellcheck="false">
+            </label>
+          </div>
+          <div class="bc-adv-toggle-row">
+            <label class="bc-adv-check"><input type="checkbox" id="bcAdvToggle"> Use my own Firebase project instead <span class="bc-optional">(more control/reliability; needed for Crew Chat &amp; Crew Talk)</span></label>
+          </div>
+          <div class="bc-row bc-row-split" id="bcAdvFields" hidden>
+            <label>Firebase Realtime Database URL
+              <input type="text" id="bcDbUrl" placeholder="https://your-project-default-rtdb.firebaseio.com" spellcheck="false">
+            </label>
+            <label>Room ID
+              <input type="text" id="bcRoomId" placeholder="show-abc123" spellcheck="false">
+            </label>
+          </div>
+          <div class="bc-link-row" id="bcLinkRow" hidden>
+            <label>This computer's broadcast link <span class="bc-optional">(click the box to select it, or use Copy)</span>
+              <div class="bc-link-copy">
+                <input type="text" id="bcLinkDisplay" readonly spellcheck="false" aria-label="Broadcast viewer link">
+                <button class="btn small ghost" id="bcLinkDisplayCopyBtn">Copy</button>
+              </div>
+            </label>
+          </div>
+          <div class="bc-link-row" id="bcCrewLinkRow" hidden>
+            <label>This computer's crew link <span class="bc-optional">(click the box to select it, or use Copy)</span>
+              <div class="bc-link-copy">
+                <input type="text" id="bcCrewLinkDisplay" readonly spellcheck="false" aria-label="Crew broadcast link">
+                <button class="btn small ghost" id="bcCrewLinkDisplayCopyBtn">Copy</button>
+              </div>
+            </label>
+          </div>
+        </details>
       </div>
     </section>
   </main>
@@ -854,6 +863,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     bcStatusText: document.getElementById('bcStatusText'),
     bcViewerCount: document.getElementById('bcViewerCount'),
     crewChatLog: document.getElementById('crewChatLog'),
+    crewChatAttachBtn: document.getElementById('crewChatAttachBtn'),
+    crewChatImgInput: document.getElementById('crewChatImgInput'),
     crewChatInput: document.getElementById('crewChatInput'),
     crewMentionDropdown: document.getElementById('crewMentionDropdown'),
     crewChatSendBtn: document.getElementById('crewChatSendBtn'),
@@ -861,7 +872,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     voiceControls: document.getElementById('voiceControls'),
     voiceTargetRow: document.getElementById('voiceTargetRow'),
     voiceTalkBtn: document.getElementById('voiceTalkBtn'),
-    voiceAlwaysOn: document.getElementById('voiceAlwaysOn'),
+    voiceAlwaysOnBtn: document.getElementById('voiceAlwaysOnBtn'),
     voiceLeaveBtn: document.getElementById('voiceLeaveBtn'),
     voiceStatus: document.getElementById('voiceStatus'),
     voiceAudioSinks: document.getElementById('voiceAudioSinks'),
@@ -1304,6 +1315,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     var ok = crewChatAvailable();
     el.crewChatInput.disabled = !ok;
     el.crewChatSendBtn.disabled = !ok;
+    el.crewChatAttachBtn.disabled = !ok;
     if(ok){
       el.crewChatStatus.textContent = 'Live — messages sync every few seconds.';
     } else if(bcSettings.mode !== 'advanced'){
@@ -1323,7 +1335,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         var cls = m.from === 'sm' ? 'ccm-sm' : 'ccm-crew';
         var who = m.from === 'sm' ? 'You' : (m.fromLabel || 'Crew');
         var cueTag = m.cueName ? ' <span class="ccm-cue">&middot; '+escapeHtml(m.cueName)+'</span>' : '';
-        return '<div class="crew-chat-msg '+cls+'"><span class="ccm-from">'+escapeHtml(who)+cueTag+'</span>'+escapeHtml(m.text||'')+'</div>';
+        var imgHtml = m.image ? '<img class="ccm-img" src="'+m.image+'" alt="Photo">' : '';
+        return '<div class="crew-chat-msg '+cls+'"><span class="ccm-from">'+escapeHtml(who)+cueTag+'</span>'+escapeHtml(m.text||'')+imgHtml+'</div>';
       }).join('');
       if(atBottom || ids.length !== crewChatRenderedCount) el.crewChatLog.scrollTop = el.crewChatLog.scrollHeight;
     }
@@ -1341,19 +1354,45 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       renderCrewChat();
     }).catch(function(){ /* leave last-known messages showing, try again next poll */ });
   }
-  function sendCrewChatMsg(){
+  function sendCrewChatMsg(imageDataUrl){
     var base = crewChatBaseUrl();
     if(!base || !bcSettings.enabled) return;
     var text = el.crewChatInput.value.trim();
-    if(!text) return;
+    if(!text && !imageDataUrl) return;
     var id = genMsgId();
     el.crewChatInput.value = '';
     crewMentionPicker.hide();
+    var body = { from: 'sm', fromLabel: 'Stage Manager', text: text.slice(0,300), cueName: el.actName.value || '', ts: Date.now() };
+    if(imageDataUrl) body.image = imageDataUrl;
     fetch(base + '/' + id + '.json', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: 'sm', fromLabel: 'Stage Manager', text: text.slice(0,300), cueName: el.actName.value || '', ts: Date.now() })
+      body: JSON.stringify(body)
     }).then(function(){ pollCrewChat(); }).catch(function(){});
+  }
+  // Shrinks a chosen photo down to a small JPEG data URL before sending it —
+  // chat messages (with any attached image) get re-fetched in full on every
+  // poll, so keeping photos small keeps that sync fast and light on data.
+  function compressImageFile(file, maxDim, quality){
+    return new Promise(function(resolve, reject){
+      var reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = function(){
+        var img = new Image();
+        img.onerror = reject;
+        img.onload = function(){
+          var w = img.naturalWidth, h = img.naturalHeight;
+          var scale = Math.min(1, maxDim / Math.max(w, h));
+          var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+          var canvas = document.createElement('canvas');
+          canvas.width = cw; canvas.height = ch;
+          canvas.getContext('2d').drawImage(img, 0, 0, cw, ch);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
   }
   // "@" mention picker — typing "@" (optionally followed by a few letters)
   // pops a list of crew currently connected on the Crew page (sourced from
@@ -1434,10 +1473,28 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     };
   }
   var crewMentionPicker = createMentionPicker(el.crewChatInput, el.crewMentionDropdown, function(){ return crewRoster; });
-  el.crewChatSendBtn.addEventListener('click', sendCrewChatMsg);
+  el.crewChatSendBtn.addEventListener('click', function(){ sendCrewChatMsg(); });
   el.crewChatInput.addEventListener('keydown', function(e){
     if(crewMentionPicker.handleKeydown(e)) return;
     if(e.key === 'Enter'){ e.preventDefault(); sendCrewChatMsg(); }
+  });
+  el.crewChatAttachBtn.addEventListener('click', function(){ el.crewChatImgInput.click(); });
+  el.crewChatImgInput.addEventListener('change', function(){
+    var file = el.crewChatImgInput.files && el.crewChatImgInput.files[0];
+    el.crewChatImgInput.value = '';
+    if(!file) return;
+    el.crewChatAttachBtn.disabled = true;
+    compressImageFile(file, 700, 0.55).then(function(dataUrl){
+      el.crewChatAttachBtn.disabled = !crewChatAvailable();
+      sendCrewChatMsg(dataUrl);
+    }).catch(function(){
+      el.crewChatAttachBtn.disabled = !crewChatAvailable();
+      alert('Could not read that photo — try a different one.');
+    });
+  });
+  // Tap a photo in the chat log to toggle it between a thumbnail and full size.
+  el.crewChatLog.addEventListener('click', function(e){
+    if(e.target && e.target.classList.contains('ccm-img')) e.target.classList.toggle('ccm-img-expanded');
   });
 
   // Print the chat log as a simple, dated document — handy for notes after the
@@ -1448,7 +1505,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var m = crewMsgsCache[id];
       var who = m.from === 'sm' ? 'Stage Manager' : (m.fromLabel || 'Crew');
       var when = m.ts ? (new Date(m.ts)).toLocaleString() : '';
-      return '<tr><td class="cw-time">'+escapeHtml(when)+'</td><td class="cw-who">'+escapeHtml(who)+'</td><td class="cw-cue">'+escapeHtml(m.cueName||'—')+'</td><td class="cw-text">'+escapeHtml(m.text||'')+'</td></tr>';
+      var imgHtml = m.image ? '<img class="cw-img" src="'+m.image+'" alt="Photo">' : '';
+      return '<tr><td class="cw-time">'+escapeHtml(when)+'</td><td class="cw-who">'+escapeHtml(who)+'</td><td class="cw-cue">'+escapeHtml(m.cueName||'—')+'</td><td class="cw-text">'+escapeHtml(m.text||'')+imgHtml+'</td></tr>';
     }).join('') : '<tr><td colspan="4" class="cw-empty">No messages were sent during this show.</td></tr>';
     var printedAt = fmtClock(new Date()) + ' on ' + new Date().toLocaleDateString();
     var html = ''+
@@ -1473,6 +1531,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       'td.cw-who{font-weight:700;color:#16213F;white-space:nowrap;}'+
       'td.cw-cue{color:#8a6d1f;white-space:nowrap;}'+
       'td.cw-text{word-break:break-word;}'+
+      '.cw-img{display:block;max-width:220px;max-height:220px;margin-top:6px;border-radius:4px;}'+
       'td.cw-empty{text-align:center;color:#999;font-style:italic;}'+
       '@page{ margin:0 0 14mm; }'+
     '</style></head><body>'+
@@ -1765,10 +1824,18 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     localVoiceTrack = null;
     el.voiceJoinBtn.hidden = false;
     el.voiceControls.hidden = true;
-    el.voiceAlwaysOn.checked = false;
+    setAlwaysOnVoiceUI(false);
     alwaysOnVoice = false;
     el.voiceTalkBtn.classList.remove('talking');
     el.voiceTalkBtn.textContent = 'Push To Talk';
+  }
+
+  // Always On (hands-free) is a toggle button rather than a checkbox — swap
+  // it between the plain "ghost" look and the gold "engaged" look used
+  // elsewhere in the app for an active toggle.
+  function setAlwaysOnVoiceUI(on){
+    el.voiceAlwaysOnBtn.classList.toggle('gold', on);
+    el.voiceAlwaysOnBtn.classList.toggle('ghost', !on);
   }
 
   function updateSpeakingIndicators(){
@@ -1790,8 +1857,9 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
   el.voiceJoinBtn.addEventListener('click', joinVoice);
   el.voiceLeaveBtn.addEventListener('click', leaveVoice);
-  el.voiceAlwaysOn.addEventListener('change', function(){
-    alwaysOnVoice = el.voiceAlwaysOn.checked;
+  el.voiceAlwaysOnBtn.addEventListener('click', function(){
+    alwaysOnVoice = !alwaysOnVoice;
+    setAlwaysOnVoiceUI(alwaysOnVoice);
     el.voiceTalkBtn.disabled = alwaysOnVoice;
     setTransmitting(alwaysOnVoice);
   });

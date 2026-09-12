@@ -179,6 +179,8 @@
   .chat-msg .chat-cue{font-weight:400;text-transform:none;letter-spacing:0;opacity:.85;}
   .chat-msg.from-sm{align-self:flex-start;background:rgba(163,130,47,.22);color:var(--text);border:1px solid rgba(163,130,47,.4);}
   .chat-msg.from-crew{align-self:flex-end;background:rgba(128,128,128,.16);color:var(--text);border:1px solid rgba(128,128,128,.3);}
+  .chat-img{max-width:200px;max-height:200px;border-radius:8px;display:block;margin-top:4px;object-fit:cover;cursor:zoom-in;}
+  .chat-img.chat-img-expanded{max-width:100%;max-height:none;object-fit:contain;}
   #chatInputRow{display:flex;gap:6px;padding:10px 14px;border-top:1px solid rgba(128,128,128,.2);position:relative;}
   #chatInputRow input{flex:1;background:rgba(128,128,128,.12);border:1px solid rgba(128,128,128,.3);color:var(--text);
     border-radius:8px;padding:8px 10px;font-size:13px;}
@@ -188,6 +190,10 @@
     transition:transform .06s ease, box-shadow .06s ease, filter .15s ease;}
   #chatInputRow button:hover{filter:brightness(1.08);}
   #chatInputRow button:active{transform:translateY(2px);box-shadow:inset 0 1px 3px rgba(0,0,0,.35);filter:none;}
+  #chatAttachBtn{background:rgba(128,128,128,.18)!important;color:var(--text)!important;flex:none;
+    box-shadow:none!important;padding:8px 10px!important;}
+  #chatAttachBtn:hover{filter:none!important;background:rgba(128,128,128,.3)!important;}
+  #chatAttachBtn:disabled{opacity:.5;cursor:not-allowed;}
   #chatMentionDropdown{position:absolute;left:14px;right:14px;bottom:calc(100% + 4px);max-width:none;
     background:#161b2c;border:1px solid rgba(128,128,128,.3);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.4);
     overflow:hidden;z-index:20;}
@@ -252,6 +258,8 @@
   <div id="chatNameRow"><input type="text" id="chatNameInput" placeholder="Your name/role (e.g. Lighting)" maxlength="40"></div>
   <div id="chatLog"><div id="chatEmpty">No messages yet.</div></div>
   <div id="chatInputRow">
+    <button id="chatAttachBtn" type="button" title="Send a photo">&#128247;</button>
+    <input type="file" id="chatImgInput" accept="image/*" hidden>
     <input type="text" id="chatMsgInput" placeholder="Message… (type @ to mention someone)" maxlength="300">
     <button id="chatSendBtn">Send</button>
     <div id="chatMentionDropdown" hidden></div>
@@ -311,6 +319,8 @@
     chatMsgInput: document.getElementById('chatMsgInput'),
     chatMentionDropdown: document.getElementById('chatMentionDropdown'),
     chatSendBtn: document.getElementById('chatSendBtn'),
+    chatAttachBtn: document.getElementById('chatAttachBtn'),
+    chatImgInput: document.getElementById('chatImgInput'),
     voiceJoinBtn: document.getElementById('voiceJoinBtn'),
     voiceControls: document.getElementById('voiceControls'),
     voiceTargetRow: document.getElementById('voiceTargetRow'),
@@ -400,6 +410,7 @@
     if(!ENABLE_CREW_CHAT) return;
     var writable = chatWritable();
     el.chatToggleBtn.style.display = writable ? 'flex' : 'none';
+    el.chatAttachBtn.disabled = !writable;
     if(el.voiceBar) el.voiceBar.style.display = writable ? 'flex' : 'none';
     // Only reserve the docked bar's space above the countdown while it's
     // actually shown, so the timer doesn't sit with unused blank space below
@@ -413,20 +424,46 @@
 
   function genMsgId(){ return 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
 
-  function sendChatMessage(){
+  function sendChatMessage(imageDataUrl){
     if(!chatWritable()) return;
     var text = el.chatMsgInput.value.trim();
-    if(!text) return;
+    if(!text && !imageDataUrl) return;
     var label = (loadJSON('sm_crew_name','') || '').toString().trim().slice(0,40) || 'Crew';
     var id = genMsgId();
     el.chatMsgInput.value = '';
     if(crewMentionPicker) crewMentionPicker.hide();
     var url = dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(roomId) + '/crewMsgs/' + id + '.json';
+    var body = { from: 'crew', fromLabel: label, text: text.slice(0,300), cueName: (lastPayload && lastPayload.actName) || '', ts: Date.now() };
+    if(imageDataUrl) body.image = imageDataUrl;
     fetch(url, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: 'crew', fromLabel: label, text: text.slice(0,300), cueName: (lastPayload && lastPayload.actName) || '', ts: Date.now() })
+      body: JSON.stringify(body)
     }).catch(function(){});
+  }
+  // Shrinks a chosen photo down to a small JPEG data URL before sending it —
+  // the whole broadcast state (crew chat included) is re-fetched on every
+  // poll, so keeping photos small keeps that sync fast and light on data.
+  function compressImageFile(file, maxDim, quality){
+    return new Promise(function(resolve, reject){
+      var reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = function(){
+        var img = new Image();
+        img.onerror = reject;
+        img.onload = function(){
+          var w = img.naturalWidth, h = img.naturalHeight;
+          var scale = Math.min(1, maxDim / Math.max(w, h));
+          var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+          var canvas = document.createElement('canvas');
+          canvas.width = cw; canvas.height = ch;
+          canvas.getContext('2d').drawImage(img, 0, 0, cw, ch);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
   }
 
   function openChat(){
@@ -470,7 +507,8 @@
         var cls = m.from === 'sm' ? 'from-sm' : 'from-crew';
         var who = m.from === 'sm' ? 'Stage Manager' : (m.fromLabel || 'Crew');
         var cueTag = m.cueName ? ' <span class="chat-cue">&middot; '+escapeHtml(m.cueName)+'</span>' : '';
-        return '<div class="chat-msg '+cls+'"><span class="chat-from">'+escapeHtml(who)+cueTag+'</span>'+escapeHtml(m.text||'')+'</div>';
+        var imgHtml = m.image ? '<img class="chat-img" src="'+m.image+'" alt="Photo">' : '';
+        return '<div class="chat-msg '+cls+'"><span class="chat-from">'+escapeHtml(who)+cueTag+'</span>'+escapeHtml(m.text||'')+imgHtml+'</div>';
       }).join('');
       if(atBottom) el.chatLog.scrollTop = el.chatLog.scrollHeight;
     }
@@ -601,10 +639,27 @@
       sendHeartbeat();
     });
     crewMentionPicker = createMentionPicker(el.chatMsgInput, el.chatMentionDropdown, function(){ return otherCrewRoster; });
-    el.chatSendBtn.addEventListener('click', sendChatMessage);
+    el.chatSendBtn.addEventListener('click', function(){ sendChatMessage(); });
     el.chatMsgInput.addEventListener('keydown', function(e){
       if(crewMentionPicker.handleKeydown(e)) return;
       if(e.key === 'Enter'){ e.preventDefault(); sendChatMessage(); }
+    });
+    el.chatAttachBtn.addEventListener('click', function(){ el.chatImgInput.click(); });
+    el.chatImgInput.addEventListener('change', function(){
+      var file = el.chatImgInput.files && el.chatImgInput.files[0];
+      el.chatImgInput.value = '';
+      if(!file) return;
+      el.chatAttachBtn.disabled = true;
+      compressImageFile(file, 700, 0.55).then(function(dataUrl){
+        el.chatAttachBtn.disabled = !chatWritable();
+        sendChatMessage(dataUrl);
+      }).catch(function(){
+        el.chatAttachBtn.disabled = !chatWritable();
+        alert('Could not read that photo — try a different one.');
+      });
+    });
+    el.chatLog.addEventListener('click', function(e){
+      if(e.target && e.target.classList.contains('chat-img')) e.target.classList.toggle('chat-img-expanded');
     });
     el.chatToggleBtn.addEventListener('click', function(){ chatOpen ? closeChat() : openChat(); });
     el.chatCloseBtn.addEventListener('click', closeChat);
