@@ -139,7 +139,14 @@
     transition:transform .06s ease, box-shadow .06s ease, filter .15s ease;}
   #voiceJoinBtn:hover{filter:brightness(1.08);}
   #voiceJoinBtn:active{transform:translateY(2px);box-shadow:inset 0 1px 4px rgba(0,0,0,.35);filter:none;}
-  #voiceTargetRow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  /* The connected-people chips and the Push To Talk/Leave buttons stack inside
+     #voiceControls — give them breathing room so the chips never crowd the
+     talk button. The chip row itself scrolls horizontally (rather than
+     wrapping to a 2nd line, which the fixed-height bar has no room for) so
+     any number of connected people stay reachable by swiping/scrolling. */
+  #voiceControls{display:flex;flex-direction:column;gap:10px;}
+  #voiceTargetRow{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:6px;-webkit-overflow-scrolling:touch;scrollbar-width:none;
+    padding-bottom:2px;}
   #voiceTargetRow::-webkit-scrollbar{display:none;}
   .voice-target-chip{display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:14px;font-size:12px;flex:none;
     background:rgba(128,128,128,.16);color:var(--text);cursor:pointer;user-select:none;white-space:nowrap;}
