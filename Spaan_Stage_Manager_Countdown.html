@@ -372,6 +372,24 @@
   .cue-scroll{max-height:420px;overflow-y:auto;}
   .cue-total{margin-top:10px;font-size:12px;color:var(--text-dim);text-align:right;}
 
+  .crew-talk-box{margin-top:18px;padding-top:16px;border-top:1px solid var(--hairline);}
+  .crew-talk-box h3{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);}
+  .crew-talk-controls{display:flex;flex-direction:column;gap:8px;margin-top:8px;}
+  .voice-target-row{display:flex;flex-wrap:wrap;gap:6px;}
+  .voice-target-chip{display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:14px;font-size:12px;
+    background:var(--overlay-hover);color:var(--text);cursor:pointer;border:1px solid transparent;user-select:none;}
+  .voice-target-chip.active{background:var(--gold-accent,#C9A94F);color:#1a1206;border-color:var(--gold-accent,#C9A94F);font-weight:700;}
+  .voice-dot{width:8px;height:8px;border-radius:50%;background:#777;flex:none;}
+  .voice-dot.vd-connected{background:#3ecf6a;}
+  .voice-dot.vd-connecting{background:#e0b23c;}
+  .voice-dot.vd-failed{background:#d95c5c;}
+  .voice-dot.vd-speaking{box-shadow:0 0 0 3px rgba(62,207,106,.35);}
+  .voice-talk-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .voice-talk-btn{flex:1;min-width:140px;padding:14px 18px;font-size:14px;font-weight:700;border-radius:8px;border:none;
+    background:var(--overlay-hover);color:var(--text);cursor:pointer;touch-action:none;user-select:none;}
+  .voice-talk-btn:disabled{opacity:.5;cursor:not-allowed;}
+  .voice-talk-btn.talking{background:#3ecf6a;color:#08300f;}
+  .voice-always-on{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);white-space:nowrap;}
   .crew-chat-box{margin-top:18px;padding-top:16px;border-top:1px solid var(--hairline);}
   .crew-chat-box h3{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);}
   .crew-chat-log{max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:10px;padding:8px;
@@ -484,6 +502,23 @@
       </div>
 
       <div class="cue-total" id="cueTotal"></div>
+
+      <div class="crew-talk-box">
+        <h3>Crew Talk <span class="bc-hint">(live voice with your Crew broadcast link &mdash; needs Broadcasting + the advanced Firebase setup; best on the same WiFi as your crew)</span></h3>
+        <div class="crew-talk-body">
+          <button class="btn small gold" id="voiceJoinBtn">&#127908; Join Voice</button>
+          <div class="crew-talk-controls" id="voiceControls" hidden>
+            <div class="voice-target-row" id="voiceTargetRow"></div>
+            <div class="voice-talk-row">
+              <button class="voice-talk-btn" id="voiceTalkBtn" disabled>Hold to Talk</button>
+              <label class="voice-always-on"><input type="checkbox" id="voiceAlwaysOn"> Always On (hands-free)</label>
+              <button class="btn small ghost" id="voiceLeaveBtn">Leave Voice</button>
+            </div>
+            <div class="bc-status" id="voiceStatus"></div>
+          </div>
+        </div>
+        <div id="voiceAudioSinks" hidden></div>
+      </div>
 
       <div class="crew-chat-box">
         <h3>Crew Chat <span class="bc-hint">(two-way messages with your Crew broadcast link &mdash; needs Broadcasting + the advanced Firebase setup)</span></h3>
@@ -807,6 +842,14 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     crewChatInput: document.getElementById('crewChatInput'),
     crewMentionDropdown: document.getElementById('crewMentionDropdown'),
     crewChatSendBtn: document.getElementById('crewChatSendBtn'),
+    voiceJoinBtn: document.getElementById('voiceJoinBtn'),
+    voiceControls: document.getElementById('voiceControls'),
+    voiceTargetRow: document.getElementById('voiceTargetRow'),
+    voiceTalkBtn: document.getElementById('voiceTalkBtn'),
+    voiceAlwaysOn: document.getElementById('voiceAlwaysOn'),
+    voiceLeaveBtn: document.getElementById('voiceLeaveBtn'),
+    voiceStatus: document.getElementById('voiceStatus'),
+    voiceAudioSinks: document.getElementById('voiceAudioSinks'),
     crewChatStatus: document.getElementById('crewChatStatus'),
     printCrewChatBtn: document.getElementById('printCrewChatBtn')
   };
@@ -1171,11 +1214,18 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
      another, so it can't offer a viewer count. The same fetch also builds
      crewRoster — the list of crew currently connected who've set a name on the
      Crew page — which powers the "@" mention picker in Crew Chat below. */
+  // Stable per-session id for this control panel, used both to keep this
+  // computer's own heartbeat entry out of the rosters below, and as this
+  // device's identity in the Crew Talk voice mesh (see further down).
+  var smPeerId = 'sm-' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
   var crewRoster = [];
+  var voiceRoster = []; // [{id, name}] — viewers who currently have Crew Talk voice joined
   function pollViewerCount(){
     if(bcSettings.mode !== 'advanced' || !bcSettings.enabled || !bcSettings.dbUrl || !bcSettings.roomId){
       el.bcViewerCount.hidden = true;
       crewRoster = [];
+      voiceRoster = [];
+      if(typeof onVoiceRosterChange === 'function') onVoiceRosterChange();
       return;
     }
     var url = bcSettings.dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(bcSettings.roomId) + '/viewers.json';
@@ -1186,17 +1236,22 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var now = Date.now();
       var count = 0;
       var roster = [];
+      var vRoster = [];
       if(data){
         Object.keys(data).forEach(function(k){
+          if(k === smPeerId) return; // never list ourselves
           var v = data[k];
           if(v && typeof v.lastSeen === 'number' && (now - v.lastSeen) < 20000){
             count++;
             var name = v.name ? String(v.name).trim() : '';
             if(name && roster.indexOf(name) === -1) roster.push(name);
+            if(v.voiceReady && name) vRoster.push({ id: k, name: name });
           }
         });
       }
       crewRoster = roster;
+      voiceRoster = vRoster;
+      if(typeof onVoiceRosterChange === 'function') onVoiceRosterChange();
       el.bcViewerCount.hidden = false;
       el.bcViewerCount.textContent = count === 1 ? '👀 1 viewer connected' : ('👀 ' + count + ' viewers connected');
     }).catch(function(){
@@ -1426,6 +1481,317 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
   setInterval(pollCrewChat, 3000);
   pollCrewChat();
+
+  /* ---------------- crew talk (live voice) ----------------
+     A WebRTC mesh: this control panel opens one direct peer-to-peer audio
+     connection to every crew device that's joined voice, and vice versa, so
+     everyone can hear whoever is transmitting without any audio ever passing
+     through a server. Firebase (the same room already used for the timer
+     state and Crew Chat) is only used to pass the small handshake messages
+     needed to set up each connection (offers/answers/ICE candidates) —
+     "signaling" — under broadcasts/<room>/voiceSig/<forPeerId>/... Actual
+     voice audio flows phone-to-phone once connected.
+     Free STUN only (no paid TURN relay): this works best when everyone is on
+     the same WiFi, since there's no relay to fall back on if a direct
+     connection can't be made across very restrictive networks — the status
+     dot next to each name shows whether that connection actually came up, so
+     a problem is visible rather than silently missing audio. */
+  var ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }];
+  var voiceJoined = false;
+  var transmitting = false;
+  var alwaysOnVoice = false;
+  var talkTarget = 'everyone'; // 'everyone' or a peerId
+  var localVoiceStream = null;
+  var localVoiceTrack = null;
+  var voicePeers = {}; // peerId -> { pc, name, state, seenCandidates:{}, answered:false, lastOfferTs:0, audioEl, analyser, speaking }
+  var voiceSigPollTimer = null;
+  var voicePresenceTimer = null;
+  var voiceAudioCtx = null;
+  var voiceSpeakingTimer = null;
+
+  function voiceSigUrl(forPeerId){
+    if(bcSettings.mode !== 'advanced' || !bcSettings.dbUrl || !bcSettings.roomId) return '';
+    return bcSettings.dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(bcSettings.roomId) + '/voiceSig/' + encodeURIComponent(forPeerId);
+  }
+
+  function sendVoicePresence(ready){
+    if(bcSettings.mode !== 'advanced' || !bcSettings.dbUrl || !bcSettings.roomId) return;
+    var url = bcSettings.dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(bcSettings.roomId) + '/viewers/' + encodeURIComponent(smPeerId) + '.json';
+    fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lastSeen: Date.now(), name: 'Stage Manager', voiceReady: !!ready })
+    }).catch(function(){});
+  }
+
+  function ensureVoiceAudioCtx(){
+    if(voiceAudioCtx) return voiceAudioCtx;
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if(!Ctx) return null;
+    voiceAudioCtx = new Ctx();
+    return voiceAudioCtx;
+  }
+
+  function closeVoicePeer(peerId){
+    var entry = voicePeers[peerId];
+    if(!entry) return;
+    try{ entry.pc.close(); }catch(e){}
+    if(entry.audioEl){ entry.audioEl.srcObject = null; entry.audioEl.remove(); }
+    delete voicePeers[peerId];
+  }
+
+  function findAudioSender(pc){
+    var senders = pc.getSenders ? pc.getSenders() : [];
+    for(var i=0;i<senders.length;i++){ if(senders[i].track && senders[i].track.kind==='audio') return senders[i]; }
+    // No track added yet (e.g. mic not ready) — fall back to any audio transceiver's sender.
+    return senders[0] || null;
+  }
+
+  function applyVoiceRouting(){
+    if(localVoiceTrack) localVoiceTrack.enabled = transmitting;
+    Object.keys(voicePeers).forEach(function(peerId){
+      var entry = voicePeers[peerId];
+      var sender = findAudioSender(entry.pc);
+      if(!sender) return;
+      var shouldSend = transmitting && (talkTarget === 'everyone' || talkTarget === peerId);
+      var wantTrack = shouldSend ? localVoiceTrack : null;
+      if(sender.track !== wantTrack){
+        sender.replaceTrack(wantTrack || null).catch(function(){});
+      }
+    });
+  }
+
+  function createVoicePeer(peerId, name){
+    var pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    var entry = { pc: pc, name: name, state: 'connecting', seenCandidates: {}, answered: false, lastOfferTs: 0, audioEl: null, analyser: null, speaking: false };
+    voicePeers[peerId] = entry;
+    if(localVoiceTrack){
+      try{ pc.addTrack(localVoiceTrack, localVoiceStream); }catch(e){}
+    } else {
+      // Reserve an audio slot so a sender exists even before the mic is ready.
+      try{ pc.addTransceiver('audio', { direction: 'sendrecv' }); }catch(e){}
+    }
+    pc.onicecandidate = function(ev){
+      if(!ev.candidate) return;
+      var url = voiceSigUrl(peerId) + '/candidates/' + encodeURIComponent(smPeerId) + '/' + genMsgId() + '.json';
+      fetch(url, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(ev.candidate.toJSON()) }).catch(function(){});
+    };
+    pc.ontrack = function(ev){
+      var audioEl = document.createElement('audio');
+      audioEl.autoplay = true;
+      audioEl.srcObject = ev.streams[0];
+      el.voiceAudioSinks.appendChild(audioEl);
+      entry.audioEl = audioEl;
+      var ctx = ensureVoiceAudioCtx();
+      if(ctx){
+        try{
+          var src = ctx.createMediaStreamSource(ev.streams[0]);
+          var analyser = ctx.createAnalyser();
+          analyser.fftSize = 512;
+          src.connect(analyser);
+          entry.analyser = analyser;
+        }catch(e){}
+      }
+    };
+    pc.onconnectionstatechange = function(){
+      var s = pc.connectionState;
+      entry.state = (s === 'connected') ? 'connected' : (s === 'failed' || s === 'closed' || s === 'disconnected') ? 'failed' : 'connecting';
+      renderVoiceTargets();
+    };
+    // Deterministic glare avoidance: whichever peer id sorts first always
+    // initiates the offer, so both sides never try to offer at once.
+    if(smPeerId < peerId){
+      pc.onnegotiationneeded = function(){
+        pc.createOffer().then(function(offer){
+          return pc.setLocalDescription(offer);
+        }).then(function(){
+          var url = voiceSigUrl(peerId) + '/offers/' + encodeURIComponent(smPeerId) + '.json';
+          return fetch(url, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type, ts: Date.now() }) });
+        }).catch(function(){});
+      };
+    }
+    return entry;
+  }
+
+  function onVoiceRosterChange(){
+    if(!voiceJoined) return;
+    var wanted = {};
+    voiceRoster.forEach(function(p){ wanted[p.id] = p.name; });
+    // Drop peers no longer present.
+    Object.keys(voicePeers).forEach(function(peerId){ if(!wanted[peerId]) closeVoicePeer(peerId); });
+    // Add newly-seen peers.
+    Object.keys(wanted).forEach(function(peerId){ if(!voicePeers[peerId]) createVoicePeer(peerId, wanted[peerId]); });
+    renderVoiceTargets();
+  }
+
+  function pollVoiceSignaling(){
+    if(!voiceJoined) return;
+    var url = voiceSigUrl(smPeerId) + '.json';
+    if(!url) return;
+    fetch(url, { cache: 'no-store' }).then(function(r){ return r.ok ? r.json() : null; }).then(function(data){
+      if(!data) return;
+      Object.keys(data.offers || {}).forEach(function(fromId){
+        var o = data.offers[fromId];
+        if(!o || !o.sdp) return;
+        var entry = voicePeers[fromId];
+        if(!entry){
+          var name = (voiceRoster.filter(function(p){return p.id===fromId;})[0] || {}).name || 'Crew';
+          entry = createVoicePeer(fromId, name);
+        }
+        if(entry.lastOfferTs === o.ts) return; // already answered this exact offer
+        entry.lastOfferTs = o.ts;
+        entry.pc.setRemoteDescription({ type: o.type, sdp: o.sdp }).then(function(){
+          return entry.pc.createAnswer();
+        }).then(function(answer){
+          return entry.pc.setLocalDescription(answer);
+        }).then(function(){
+          var aurl = voiceSigUrl(fromId) + '/answers/' + encodeURIComponent(smPeerId) + '.json';
+          return fetch(aurl, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ sdp: entry.pc.localDescription.sdp, type: entry.pc.localDescription.type, ts: Date.now() }) });
+        }).catch(function(){});
+      });
+      Object.keys(data.answers || {}).forEach(function(fromId){
+        var a = data.answers[fromId];
+        var entry = voicePeers[fromId];
+        if(!a || !entry || entry.answered) return;
+        if(entry.pc.signalingState !== 'have-local-offer') return;
+        entry.answered = true;
+        entry.pc.setRemoteDescription({ type: a.type, sdp: a.sdp }).catch(function(){});
+      });
+      Object.keys(data.candidates || {}).forEach(function(fromId){
+        var entry = voicePeers[fromId];
+        if(!entry) return;
+        var cands = data.candidates[fromId] || {};
+        Object.keys(cands).forEach(function(cid){
+          if(entry.seenCandidates[cid]) return;
+          entry.seenCandidates[cid] = true;
+          entry.pc.addIceCandidate(cands[cid]).catch(function(){});
+        });
+      });
+    }).catch(function(){});
+  }
+
+  function renderVoiceTargets(){
+    var chips = [{ id: 'everyone', name: 'Everyone' }].concat(voiceRoster);
+    el.voiceTargetRow.innerHTML = '';
+    chips.forEach(function(c){
+      var chip = document.createElement('div');
+      chip.className = 'voice-target-chip' + (talkTarget === c.id ? ' active' : '');
+      if(c.id !== 'everyone'){
+        var dot = document.createElement('span');
+        var entry = voicePeers[c.id];
+        var cls = entry ? (entry.state === 'connected' ? 'vd-connected' : entry.state === 'failed' ? 'vd-failed' : 'vd-connecting') : 'vd-failed';
+        dot.className = 'voice-dot ' + cls + (entry && entry.speaking ? ' vd-speaking' : '');
+        chip.appendChild(dot);
+      }
+      var label = document.createElement('span');
+      label.textContent = c.name;
+      chip.appendChild(label);
+      chip.addEventListener('click', function(){
+        talkTarget = c.id;
+        applyVoiceRouting();
+        renderVoiceTargets();
+      });
+      el.voiceTargetRow.appendChild(chip);
+    });
+    var live = voiceRoster.filter(function(p){ var e = voicePeers[p.id]; return e && e.state === 'connected'; }).length;
+    el.voiceStatus.textContent = voiceRoster.length
+      ? (live + ' of ' + voiceRoster.length + ' crew connected on voice')
+      : 'No crew have joined Crew Talk voice yet.';
+  }
+
+  function setTransmitting(on){
+    transmitting = on;
+    el.voiceTalkBtn.classList.toggle('talking', on);
+    applyVoiceRouting();
+  }
+
+  function joinVoice(){
+    if(!crewChatAvailable()){
+      alert('Start Broadcasting with the advanced Firebase setup first, then Join Voice.');
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream){
+      localVoiceStream = stream;
+      localVoiceTrack = stream.getAudioTracks()[0];
+      localVoiceTrack.enabled = false;
+      voiceJoined = true;
+      el.voiceJoinBtn.hidden = true;
+      el.voiceControls.hidden = false;
+      el.voiceTalkBtn.disabled = false;
+      sendVoicePresence(true);
+      voicePresenceTimer = setInterval(function(){ sendVoicePresence(true); }, 8000);
+      voiceSigPollTimer = setInterval(pollVoiceSignaling, 1500);
+      voiceSpeakingTimer = setInterval(updateSpeakingIndicators, 300);
+      onVoiceRosterChange();
+      // Attach the now-ready mic track to any peer connections opened before it existed.
+      Object.keys(voicePeers).forEach(function(peerId){
+        var entry = voicePeers[peerId];
+        var sender = findAudioSender(entry.pc);
+        if(sender && !sender.track) sender.replaceTrack(localVoiceTrack).catch(function(){});
+      });
+      applyVoiceRouting();
+    }).catch(function(){
+      alert("Couldn't access the microphone — check your browser's mic permission for this page.");
+    });
+  }
+
+  function leaveVoice(){
+    voiceJoined = false;
+    transmitting = false;
+    talkTarget = 'everyone';
+    if(voicePresenceTimer){ clearInterval(voicePresenceTimer); voicePresenceTimer = null; }
+    if(voiceSigPollTimer){ clearInterval(voiceSigPollTimer); voiceSigPollTimer = null; }
+    if(voiceSpeakingTimer){ clearInterval(voiceSpeakingTimer); voiceSpeakingTimer = null; }
+    sendVoicePresence(false);
+    Object.keys(voicePeers).forEach(closeVoicePeer);
+    if(localVoiceStream){ localVoiceStream.getTracks().forEach(function(t){ t.stop(); }); }
+    localVoiceStream = null;
+    localVoiceTrack = null;
+    el.voiceJoinBtn.hidden = false;
+    el.voiceControls.hidden = true;
+    el.voiceAlwaysOn.checked = false;
+    alwaysOnVoice = false;
+    el.voiceTalkBtn.classList.remove('talking');
+  }
+
+  function updateSpeakingIndicators(){
+    var buf = null;
+    var changed = false;
+    Object.keys(voicePeers).forEach(function(peerId){
+      var entry = voicePeers[peerId];
+      if(!entry.analyser) return;
+      if(!buf || buf.length !== entry.analyser.fftSize) buf = new Uint8Array(entry.analyser.fftSize);
+      entry.analyser.getByteTimeDomainData(buf);
+      var sum = 0;
+      for(var i=0;i<buf.length;i++){ var d = buf[i]-128; sum += d*d; }
+      var rms = Math.sqrt(sum / buf.length);
+      var speaking = rms > 6;
+      if(speaking !== entry.speaking){ entry.speaking = speaking; changed = true; }
+    });
+    if(changed) renderVoiceTargets();
+  }
+
+  el.voiceJoinBtn.addEventListener('click', joinVoice);
+  el.voiceLeaveBtn.addEventListener('click', leaveVoice);
+  el.voiceAlwaysOn.addEventListener('change', function(){
+    alwaysOnVoice = el.voiceAlwaysOn.checked;
+    el.voiceTalkBtn.disabled = alwaysOnVoice;
+    setTransmitting(alwaysOnVoice);
+  });
+  // Pointer events (not mouse/touch separately) so this works the same with
+  // a mouse click-and-hold or a finger press-and-hold on a phone/tablet.
+  el.voiceTalkBtn.addEventListener('pointerdown', function(e){
+    if(alwaysOnVoice) return;
+    e.preventDefault();
+    el.voiceTalkBtn.setPointerCapture(e.pointerId);
+    setTransmitting(true);
+  });
+  ['pointerup','pointercancel','pointerleave'].forEach(function(evt){
+    el.voiceTalkBtn.addEventListener(evt, function(){
+      if(alwaysOnVoice) return;
+      setTransmitting(false);
+    });
+  });
 
   /* ---------------- theme ---------------- */
   function applyControlTheme(){
@@ -2567,6 +2933,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
     // Fresh broadcast room: new Room ID, chat cleared, links regenerated,
     // broadcasting stopped until Start Broadcasting is pressed again.
+    if(typeof leaveVoice === 'function' && typeof voiceJoined !== 'undefined' && voiceJoined) leaveVoice();
     bcSettings.enabled = false;
     bcSettings.blobUrl = '';
     bcSettings.roomId = randomRoomId();
