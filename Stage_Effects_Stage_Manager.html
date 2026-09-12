@@ -108,25 +108,35 @@
     appearance:none;border:1px solid var(--hairline);
     background:var(--panel-bg-2);color:var(--text);
     padding:9px 16px;border-radius:8px;font-size:13px;font-weight:600;
-    cursor:pointer;transition:transform .08s ease, background .15s ease;
-    white-space:nowrap;
+    cursor:pointer;white-space:nowrap;
+    box-shadow:0 2px 0 rgba(0,0,0,.28), 0 2px 4px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.07);
+    transition:transform .06s ease, box-shadow .06s ease, background .15s ease, filter .15s ease;
   }
-  .btn:hover{background:var(--overlay-hover);}
-  .btn:active{transform:scale(.97);}
-  .btn.gold{background:linear-gradient(180deg,var(--gold-2),var(--gold));color:#1a1206;border:none;}
+  .btn:hover{background:var(--overlay-hover);filter:brightness(1.06);}
+  .btn:active{transform:translateY(2px);box-shadow:0 0 0 rgba(0,0,0,0), inset 0 1px 3px rgba(0,0,0,.3);filter:none;}
+  .btn.gold{background:linear-gradient(180deg,var(--gold-2),var(--gold));color:#1a1206;border:none;
+    box-shadow:0 2px 0 rgba(0,0,0,.35), 0 2px 5px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.4);}
   .btn.gold:hover{filter:brightness(1.08);}
-  .btn.green{background:#3fbf6a;color:#0a2413;border:none;}
-  .btn.red{background:#e6483f;color:#2a0a08;border:none;}
-  .btn.ghost{background:transparent;}
+  .btn.gold:active{box-shadow:inset 0 1px 4px rgba(0,0,0,.35);filter:none;}
+  .btn.green{background:linear-gradient(180deg,#4fd383,#2fa85a);color:#0a2413;border:none;
+    box-shadow:0 2px 0 rgba(0,0,0,.3), 0 2px 5px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.35);}
+  .btn.green:active{box-shadow:inset 0 1px 4px rgba(0,0,0,.3);filter:none;}
+  .btn.red{background:linear-gradient(180deg,#f0655c,#d43f35);color:#2a0a08;border:none;
+    box-shadow:0 2px 0 rgba(0,0,0,.3), 0 2px 5px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.35);}
+  .btn.red:active{box-shadow:inset 0 1px 4px rgba(0,0,0,.3);filter:none;}
+  .btn.ghost{background:var(--panel-bg-2);}
   .btn.small{padding:6px 10px;font-size:12px;}
-  .btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn:disabled{opacity:.4;cursor:not-allowed;box-shadow:none;transform:none;}
   .btn-row{display:flex;gap:8px;flex-wrap:wrap;}
   .icon-toggle{
     width:36px;height:36px;border-radius:8px;border:1px solid var(--hairline);
     background:var(--panel-bg-2);color:var(--text);font-size:16px;cursor:pointer;
     display:flex;align-items:center;justify-content:center;
+    box-shadow:0 2px 0 rgba(0,0,0,.28), 0 2px 4px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.07);
+    transition:transform .06s ease, box-shadow .06s ease, background .15s ease;
   }
   .icon-toggle:hover{background:var(--overlay-hover);}
+  .icon-toggle:active{transform:translateY(2px);box-shadow:inset 0 1px 3px rgba(0,0,0,.3);}
 
   .segmented{display:inline-flex;border:1px solid var(--hairline);border-radius:8px;overflow:hidden;}
   .segmented button{
@@ -386,9 +396,14 @@
   .voice-dot.vd-speaking{box-shadow:0 0 0 3px rgba(62,207,106,.35);}
   .voice-talk-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
   .voice-talk-btn{flex:1;min-width:140px;padding:14px 18px;font-size:14px;font-weight:700;border-radius:8px;border:none;
-    background:var(--overlay-hover);color:var(--text);cursor:pointer;touch-action:none;user-select:none;}
-  .voice-talk-btn:disabled{opacity:.5;cursor:not-allowed;}
-  .voice-talk-btn.talking{background:#3ecf6a;color:#08300f;}
+    background:linear-gradient(180deg,var(--panel-bg-2),var(--panel-bg));color:var(--text);cursor:pointer;touch-action:none;user-select:none;
+    box-shadow:0 3px 0 rgba(0,0,0,.35), 0 4px 10px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.08);
+    transition:transform .05s ease, box-shadow .05s ease, background .15s ease;}
+  .voice-talk-btn:hover:not(:disabled){filter:brightness(1.1);}
+  .voice-talk-btn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none;}
+  .voice-talk-btn.talking{background:linear-gradient(180deg,#4fd787,#2fa85a);color:#08300f;
+    box-shadow:0 0 0 3px rgba(62,207,106,.35), inset 0 2px 5px rgba(0,0,0,.28);
+    transform:translateY(2px);}
   .voice-always-on{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);white-space:nowrap;}
   .crew-chat-box{margin-top:18px;padding-top:16px;border-top:1px solid var(--hairline);}
   .crew-chat-box h3{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);}
@@ -504,13 +519,13 @@
       <div class="cue-total" id="cueTotal"></div>
 
       <div class="crew-talk-box">
-        <h3>Crew Talk <span class="bc-hint">(live voice with your Crew broadcast link &mdash; needs Broadcasting + the advanced Firebase setup; best on the same WiFi as your crew)</span></h3>
+        <h3>Crew Talk <span class="bc-hint">(live voice with your Crew broadcast link &mdash; needs Broadcasting + the advanced Firebase setup; best on the same WiFi as your crew; hold the Spacebar to talk)</span></h3>
         <div class="crew-talk-body">
           <button class="btn small gold" id="voiceJoinBtn">&#127908; Join Voice</button>
           <div class="crew-talk-controls" id="voiceControls" hidden>
             <div class="voice-target-row" id="voiceTargetRow"></div>
             <div class="voice-talk-row">
-              <button class="voice-talk-btn" id="voiceTalkBtn" disabled>Hold to Talk</button>
+              <button class="voice-talk-btn" id="voiceTalkBtn" disabled title="Hold this button, or hold the Spacebar, to talk">Push To Talk</button>
               <label class="voice-always-on"><input type="checkbox" id="voiceAlwaysOn"> Always On (hands-free)</label>
               <button class="btn small ghost" id="voiceLeaveBtn">Leave Voice</button>
             </div>
@@ -697,7 +712,7 @@
   </main>
 
   <footer class="hint">
-    <kbd>Space</kbd> start/pause &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>F</kbd> fullscreen this window &nbsp; <kbd>&larr;</kbd><kbd>&rarr;</kbd> previous/next cue &nbsp;
+    <kbd>Space</kbd> start/pause (or hold to talk on Crew Talk voice) &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>F</kbd> fullscreen this window &nbsp; <kbd>&larr;</kbd><kbd>&rarr;</kbd> previous/next cue &nbsp;
     Drag the Extended Display window onto your second screen, then press <kbd>F11</kbd> for true full screen.
     <div class="footer-about"><kbd>1</kbd>-<kbd>5</kbd> message presets (5 MIN/PLACES/STANDBY/GO/HOLD) &nbsp; <kbd>6</kbd> clear message &nbsp; <kbd>7</kbd> flash toggle &nbsp; <kbd>8</kbd> open extended display &nbsp; <kbd>9</kbd> test alarm &nbsp; <kbd>0</kbd> save show &mdash; handy if you're driving this from a Stream Deck or other macro pad: map each button to the matching key with its plain "Hotkey" action, no plugin needed. Just make sure this browser tab is the focused window when a button is pressed.</div>
     <div class="footer-about">Stage Manager Countdown Timer &mdash; built for Stage Effects Group (Pty) Ltd. Runs entirely offline in this browser tab.</div>
@@ -1702,6 +1717,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   function setTransmitting(on){
     transmitting = on;
     el.voiceTalkBtn.classList.toggle('talking', on);
+    el.voiceTalkBtn.textContent = on ? '🔴 Talking…' : 'Push To Talk';
     applyVoiceRouting();
   }
 
@@ -1752,6 +1768,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     el.voiceAlwaysOn.checked = false;
     alwaysOnVoice = false;
     el.voiceTalkBtn.classList.remove('talking');
+    el.voiceTalkBtn.textContent = 'Push To Talk';
   }
 
   function updateSpeakingIndicators(){
@@ -3551,7 +3568,15 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   document.addEventListener('keydown', function(e){
     var tag = (e.target && e.target.tagName) || '';
     if(tag === 'INPUT' || tag === 'TEXTAREA') return;
-    if(e.code === 'Space'){ e.preventDefault(); running ? pauseTimer() : startTimer(); }
+    if(e.code === 'Space'){
+      e.preventDefault();
+      if(e.repeat) return;
+      // While joined to Crew Talk voice (and not on hands-free Always On),
+      // the spacebar becomes push-to-talk instead of the timer shortcut —
+      // matches holding down the Talk button.
+      if(voiceJoined && !alwaysOnVoice && !el.voiceTalkBtn.disabled){ setTransmitting(true); }
+      else { running ? pauseTimer() : startTimer(); }
+    }
     else if(e.key === 'r' || e.key === 'R'){ resetTimer(); }
     else if(e.key === 'f' || e.key === 'F'){
       if(document.fullscreenElement){ document.exitFullscreen(); }
@@ -3583,6 +3608,13 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     else if(e.key === '8'){ openPresenterWindow(); }
     else if(e.key === '9'){ testFlash(); }
     else if(e.key === '0'){ saveShowToFile(); }
+  });
+
+  document.addEventListener('keyup', function(e){
+    if(e.code !== 'Space') return;
+    var tag = (e.target && e.target.tagName) || '';
+    if(tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if(voiceJoined && !alwaysOnVoice){ setTransmitting(false); }
   });
 
   window.addEventListener('beforeunload', persist);

@@ -90,11 +90,18 @@
   #setupCard input{width:100%;background:rgba(0,0,0,.2);border:1px solid rgba(128,128,128,.3);color:var(--text);
     border-radius:6px;padding:9px 10px;font-size:13px;margin-bottom:14px;}
   #setupCard button{width:100%;background:linear-gradient(180deg,var(--gold-2),var(--gold));color:#1a1206;border:none;
-    border-radius:8px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;}
+    border-radius:8px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;
+    box-shadow:0 3px 0 rgba(0,0,0,.35), 0 3px 6px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.4);
+    transition:transform .06s ease, box-shadow .06s ease, filter .15s ease;}
+  #setupCard button:hover{filter:brightness(1.08);}
+  #setupCard button:active{transform:translateY(2px);box-shadow:inset 0 1px 4px rgba(0,0,0,.35);filter:none;}
 
   #chatToggleBtn{position:fixed;bottom:20px;left:26px;width:46px;height:46px;border-radius:50%;border:1px solid rgba(128,128,128,.3);
-    background:rgba(128,128,128,.12);color:var(--text);font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:20;}
+    background:rgba(128,128,128,.12);color:var(--text);font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:20;
+    box-shadow:0 3px 0 rgba(0,0,0,.3), 0 4px 8px rgba(0,0,0,.25);
+    transition:transform .06s ease, box-shadow .06s ease, background .15s ease;}
   #chatToggleBtn:hover{background:rgba(128,128,128,.22);}
+  #chatToggleBtn:active{transform:translateY(2px);box-shadow:inset 0 1px 4px rgba(0,0,0,.3);}
   #chatBadge{position:absolute;top:-4px;right:-4px;background:var(--danger);color:#fff;font-size:11px;font-weight:700;
     min-width:18px;height:18px;border-radius:9px;display:none;align-items:center;justify-content:center;padding:0 4px;}
   #chatPanel{position:fixed;bottom:78px;left:26px;width:320px;max-width:calc(100vw - 40px);max-height:60vh;
@@ -112,7 +119,11 @@
   #voiceBoxHead{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--dim);margin-bottom:8px;}
   #voiceHint{font-weight:400;text-transform:none;letter-spacing:0;opacity:.8;}
   #voiceJoinBtn{width:100%;background:linear-gradient(180deg,var(--gold-2),var(--gold));color:#1a1206;border:none;
-    border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;}
+    border-radius:8px;padding:9px 14px;font-size:13px;font-weight:700;cursor:pointer;
+    box-shadow:0 3px 0 rgba(0,0,0,.35), 0 3px 6px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.4);
+    transition:transform .06s ease, box-shadow .06s ease, filter .15s ease;}
+  #voiceJoinBtn:hover{filter:brightness(1.08);}
+  #voiceJoinBtn:active{transform:translateY(2px);box-shadow:inset 0 1px 4px rgba(0,0,0,.35);filter:none;}
   #voiceTargetRow{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
   .voice-target-chip{display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:14px;font-size:12px;
     background:rgba(128,128,128,.16);color:var(--text);cursor:pointer;user-select:none;}
@@ -124,11 +135,20 @@
   .voice-dot.vd-speaking{box-shadow:0 0 0 3px rgba(62,207,106,.35);}
   #voiceTalkRow{display:flex;gap:8px;}
   #voiceTalkBtn{flex:1;padding:12px 14px;font-size:13px;font-weight:700;border-radius:8px;border:none;
-    background:rgba(128,128,128,.16);color:var(--text);cursor:pointer;touch-action:none;user-select:none;}
-  #voiceTalkBtn:disabled{opacity:.5;cursor:not-allowed;}
-  #voiceTalkBtn.talking{background:#3ecf6a;color:#08300f;}
-  #voiceLeaveBtn{background:rgba(128,128,128,.16);color:var(--text);border:none;border-radius:8px;padding:12px 14px;
-    font-size:12px;cursor:pointer;}
+    background:linear-gradient(180deg,rgba(128,128,128,.22),rgba(128,128,128,.1));color:var(--text);cursor:pointer;touch-action:none;user-select:none;
+    box-shadow:0 3px 0 rgba(0,0,0,.35), 0 4px 10px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.08);
+    transition:transform .05s ease, box-shadow .05s ease, background .15s ease;}
+  #voiceTalkBtn:hover:not(:disabled){filter:brightness(1.15);}
+  #voiceTalkBtn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none;}
+  #voiceTalkBtn.talking{background:linear-gradient(180deg,#4fd787,#2fa85a);color:#08300f;
+    box-shadow:0 0 0 3px rgba(62,207,106,.35), inset 0 2px 5px rgba(0,0,0,.28);
+    transform:translateY(2px);}
+  #voiceLeaveBtn{background:linear-gradient(180deg,rgba(128,128,128,.22),rgba(128,128,128,.1));color:var(--text);border:none;border-radius:8px;padding:12px 14px;
+    font-size:12px;cursor:pointer;
+    box-shadow:0 3px 0 rgba(0,0,0,.3), 0 3px 6px rgba(0,0,0,.2);
+    transition:transform .06s ease, box-shadow .06s ease, filter .15s ease;}
+  #voiceLeaveBtn:hover{filter:brightness(1.15);}
+  #voiceLeaveBtn:active{transform:translateY(2px);box-shadow:inset 0 1px 4px rgba(0,0,0,.3);filter:none;}
   #voiceStatus{font-size:11px;color:var(--dim);margin-top:6px;}
   #chatLog{flex:1;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:8px;min-height:120px;}
   #chatEmpty{color:var(--dim);font-size:12px;text-align:center;padding:14px 0;}
@@ -141,7 +161,11 @@
   #chatInputRow input{flex:1;background:rgba(128,128,128,.12);border:1px solid rgba(128,128,128,.3);color:var(--text);
     border-radius:8px;padding:8px 10px;font-size:13px;}
   #chatInputRow button{background:linear-gradient(180deg,var(--gold-2),var(--gold));color:#1a1206;border:none;
-    border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;}
+    border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;
+    box-shadow:0 2px 0 rgba(0,0,0,.35), 0 2px 5px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.4);
+    transition:transform .06s ease, box-shadow .06s ease, filter .15s ease;}
+  #chatInputRow button:hover{filter:brightness(1.08);}
+  #chatInputRow button:active{transform:translateY(2px);box-shadow:inset 0 1px 3px rgba(0,0,0,.35);filter:none;}
   #chatMentionDropdown{position:absolute;left:14px;right:14px;bottom:calc(100% + 4px);max-width:none;
     background:#161b2c;border:1px solid rgba(128,128,128,.3);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.4);
     overflow:hidden;z-index:20;}
@@ -187,12 +211,12 @@
   <div id="chatHeader"><span>Crew Chat</span><button id="chatCloseBtn" title="Close">&times;</button></div>
   <div id="chatNameRow"><input type="text" id="chatNameInput" placeholder="Your name/role (e.g. Lighting)" maxlength="40"></div>
   <div id="voiceBox">
-    <div id="voiceBoxHead">Crew Talk <span id="voiceHint">(live voice &mdash; best on the same WiFi)</span></div>
+    <div id="voiceBoxHead">Crew Talk <span id="voiceHint">(live voice &mdash; best on the same WiFi; hold Spacebar to talk)</span></div>
     <button id="voiceJoinBtn">&#127908; Join Voice</button>
     <div id="voiceControls" hidden>
       <div id="voiceTargetRow"></div>
       <div id="voiceTalkRow">
-        <button id="voiceTalkBtn" disabled>Hold to Talk</button>
+        <button id="voiceTalkBtn" disabled title="Hold this button, or hold the Spacebar, to talk">Push To Talk</button>
         <button id="voiceLeaveBtn">Leave</button>
       </div>
       <div id="voiceStatus"></div>
@@ -750,6 +774,7 @@
   function setTransmitting(on){
     transmitting = on;
     el.voiceTalkBtn.classList.toggle('talking', on);
+    el.voiceTalkBtn.textContent = on ? '🔴 Talking…' : 'Push To Talk';
     applyVoiceRouting();
   }
 
@@ -795,6 +820,7 @@
     el.voiceJoinBtn.hidden = false;
     el.voiceControls.hidden = true;
     el.voiceTalkBtn.classList.remove('talking');
+    el.voiceTalkBtn.textContent = 'Push To Talk';
   }
 
   function updateSpeakingIndicators(){
@@ -824,6 +850,25 @@
     });
     ['pointerup','pointercancel','pointerleave'].forEach(function(evt){
       el.voiceTalkBtn.addEventListener(evt, function(){ setTransmitting(false); });
+    });
+    // Spacebar push-to-talk (matches holding down the Talk button). Ignored
+    // while typing in a text field (name/message inputs), and always blocks
+    // the browser's own default action for Space (page scroll / text
+    // selection) elsewhere on the page so that default action never fires.
+    document.addEventListener('keydown', function(e){
+      if(e.code !== 'Space') return;
+      var tag = (e.target && e.target.tagName) || '';
+      if(tag === 'INPUT' || tag === 'TEXTAREA') return;
+      e.preventDefault();
+      if(e.repeat) return;
+      if(voiceJoined && !el.voiceTalkBtn.disabled) setTransmitting(true);
+    });
+    document.addEventListener('keyup', function(e){
+      if(e.code !== 'Space') return;
+      var tag = (e.target && e.target.tagName) || '';
+      if(tag === 'INPUT' || tag === 'TEXTAREA') return;
+      e.preventDefault();
+      if(voiceJoined) setTransmitting(false);
     });
   } else if(el.voiceBox){
     el.voiceBox.remove();
