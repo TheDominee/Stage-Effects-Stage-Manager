@@ -313,14 +313,7 @@
   .timecode-box{margin-top:14px;padding-top:12px;border-top:1px solid var(--hairline-soft);}
   .timecode-box h3{margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);font-weight:700;}
   .timecode-box h3 .bc-hint{text-transform:none;letter-spacing:0;font-weight:400;color:var(--text-dim);opacity:.75;font-size:10.5px;}
-  .tc-time-row{display:flex;gap:6px;align-items:center;justify-content:center;margin-bottom:10px;}
-  .tc-time-row input{
-    width:48px;text-align:center;font-family:var(--mono);font-size:18px;
-    background:var(--input-bg);border:1px solid var(--hairline);color:var(--text);
-    border-radius:6px;padding:6px 2px;
-  }
-  .tc-time-row span{color:var(--text-dim);font-size:16px;}
-  .tc-readout{margin-top:10px;font-family:var(--mono);font-size:26px;font-weight:700;color:var(--gold-accent);text-align:center;letter-spacing:2px;}
+  .timecode-box a{color:var(--gold-accent);font-weight:600;}
 
   /* ---------- cue list panel ---------- */
   .cue-file-row{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;}
@@ -731,35 +724,9 @@
       </div>
 
       <div class="timecode-box">
-        <h3>Timecode Generator (LTC) <span class="bc-hint">(experimental &mdash; audio timecode for lighting/video/audio gear)</span></h3>
-        <div class="bc-row">
-          <label>Frame rate
-            <div class="segmented" id="tcFpsSeg">
-              <button type="button" data-fps="24">24</button>
-              <button type="button" data-fps="25" class="active">25 (PAL)</button>
-              <button type="button" data-fps="30">30</button>
-            </div>
-          </label>
-        </div>
-        <div class="set-time-label">Start timecode <span class="bc-optional">(rolls forward from here once started &mdash; hours : minutes : seconds : frames)</span></div>
-        <div class="tc-time-row">
-          <input id="tcH" type="number" min="0" max="23" value="1" aria-label="Timecode hours">
-          <span>:</span>
-          <input id="tcM" type="number" min="0" max="59" value="0" aria-label="Timecode minutes">
-          <span>:</span>
-          <input id="tcS" type="number" min="0" max="59" value="0" aria-label="Timecode seconds">
-          <span>:</span>
-          <input id="tcF" type="number" min="0" max="29" value="0" aria-label="Timecode frames">
-        </div>
-        <div class="bc-actions">
-          <button class="btn small gold" id="tcStartBtn">Start Timecode</button>
-          <button class="btn small ghost" id="tcStopBtn" disabled>Stop Timecode</button>
-          <button class="btn small ghost" id="tcSelectOutputBtn">Select Timecode Output&hellip;</button>
-        </div>
-        <label class="bc-adv-check"><input type="checkbox" id="tcAutoStart" checked> Auto-start with the show's Start button <span class="bc-optional">(Pause/Reset don't stop it &mdash; use Stop Timecode)</span></label>
-        <div class="bc-status" id="tcOutputStatus">Not selected yet &mdash; will use your default audio output. Click "Select Timecode Output" to send it to one output of a multi-output sound card instead (Chrome or Edge on this computer, needed for that).</div>
-        <div class="bc-status" id="tcRunStatus">Not running.</div>
-        <div class="tc-readout" id="tcReadout" hidden>00:00:00:00</div>
+        <h3>Timecode Generator (LTC) <span class="bc-hint">(experimental &mdash; now its own tool)</span></h3>
+        <div class="bc-status">Runs as a separate page so it can keep going on its own and target a dedicated output on a multi-output sound card. <a href="Stage_Effects_Timecode_Generator.html" target="_blank" rel="noopener">Open Timecode Generator&nbsp;&#8599;</a></div>
+        <label class="bc-adv-check"><input type="checkbox" id="tcBroadcastStart" checked> Signal it to start when this Start button is pressed <span class="bc-optional">(only works while the Timecode Generator page is also open in another tab of this same browser)</span></label>
       </div>
     </section>
   </main>
@@ -906,18 +873,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     bcCrewLinkDisplayCopyBtn: document.getElementById('bcCrewLinkDisplayCopyBtn'),
     bcStatusText: document.getElementById('bcStatusText'),
     bcViewerCount: document.getElementById('bcViewerCount'),
-    tcFpsSeg: document.getElementById('tcFpsSeg'),
-    tcH: document.getElementById('tcH'),
-    tcM: document.getElementById('tcM'),
-    tcS: document.getElementById('tcS'),
-    tcF: document.getElementById('tcF'),
-    tcStartBtn: document.getElementById('tcStartBtn'),
-    tcStopBtn: document.getElementById('tcStopBtn'),
-    tcSelectOutputBtn: document.getElementById('tcSelectOutputBtn'),
-    tcAutoStart: document.getElementById('tcAutoStart'),
-    tcOutputStatus: document.getElementById('tcOutputStatus'),
-    tcRunStatus: document.getElementById('tcRunStatus'),
-    tcReadout: document.getElementById('tcReadout'),
+    tcBroadcastStart: document.getElementById('tcBroadcastStart'),
     crewChatLog: document.getElementById('crewChatLog'),
     crewChatAttachBtn: document.getElementById('crewChatAttachBtn'),
     crewChatImgInput: document.getElementById('crewChatImgInput'),
@@ -1233,206 +1189,25 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   setBroadcastUI();
   updateLinkDisplay();
 
-  /* ---------------- LTC timecode generator (experimental) ----------------
-     Generates real SMPTE/EBU Linear Timecode as an audio signal — the same
-     kind of signal a hardware timecode box sends to lighting desks, video
-     switchers, or multitrack recorders — using the Web Audio API. It is a
-     continuously-rolling clock (not tied frame-by-frame to the countdown):
-     you set a start code, and once started it just keeps counting up for the
-     rest of the show, which is how real productions use timecode as a shared
-     reference rather than as another countdown.
-
-     Frames are pre-rendered one at a time as tiny audio buffers and scheduled
-     back-to-back against the AudioContext's own sample clock (not JS timers),
-     which is what keeps it accurate — JS only decides *when* to render ahead,
-     never how the samples are timed. A small fractional-sample accumulator
-     (tcSampleAccum) prevents that per-frame rounding from drifting over a
-     multi-hour show.
-
-     Sending it to a specific output on a multi-output sound card (rather
-     than your default speakers) uses AudioContext.setSinkId() and
-     navigator.mediaDevices.selectAudioOutput() — both Chrome/Edge-only as of
-     this writing, so that part silently falls back to the default output
-     everywhere else while the rest of this still works. */
-  var tcFps = 25;
-  var tcCtx = null;
-  var tcRunning = false;
-  var tcOutputDeviceId = null;
-  var tcSchedulerTimer = null;
-  var tcNextFrameIndex = 0;
-  var tcNextStartTime = 0;
-  var tcPlaybackStartCtxTime = 0;
-  var tcLevel = 1;
-  var tcSampleAccum = 0;
-  var tcStartCode = { h: 1, m: 0, s: 0, f: 0 };
-  var TC_LOOKAHEAD = 0.25;   // seconds of audio to keep scheduled ahead
-  var TC_INTERVAL_MS = 60;   // how often the scheduler tops that up
-
-  function tcClamp(v, lo, hi){ return Math.min(hi, Math.max(lo, v)); }
-  function tcPad2(n){ return String(n).padStart(2,'0'); }
-  function fmtTcCode(c){ return tcPad2(c.h)+':'+tcPad2(c.m)+':'+tcPad2(c.s)+':'+tcPad2(c.f); }
-
-  // Builds the 80-bit SMPTE/EBU LTC frame word for one frame (bit 0 = first
-  // bit transmitted). User-bits and the BGF/parity flags (bits 27/43/58/59)
-  // are left at 0 throughout — a fully valid, defined state that every LTC
-  // reader accepts; only the sync word and the four BCD time fields actually
-  // matter for basic hours/minutes/seconds/frames decoding.
-  function ltcFrameBits(h, m, s, f){
-    var bits = new Array(80).fill(0);
-    function setField(startBit, value, width){
-      for(var i=0;i<width;i++) bits[startBit+i] = (value >> i) & 1;
-    }
-    setField(0, f % 10, 4);            // frame units
-    setField(8, Math.floor(f/10), 2);  // frame tens
-    setField(16, s % 10, 4);           // seconds units
-    setField(24, Math.floor(s/10), 3); // seconds tens
-    setField(32, m % 10, 4);           // minutes units
-    setField(40, Math.floor(m/10), 3); // minutes tens
-    setField(48, h % 10, 4);           // hours units
-    setField(56, Math.floor(h/10), 2); // hours tens
-    var SYNC = 0x3FFD;
-    for(var i=0;i<16;i++) bits[64+i] = (SYNC >> (15-i)) & 1; // sync word, MSB-first
-    return bits;
-  }
-
-  // Biphase Mark encodes 80 bits into `totalSamples` of a +/-1 square wave:
-  // a transition always happens at the start of every bit cell, and ONLY a 1
-  // bit gets a second transition at the cell's midpoint. This is what makes
-  // LTC self-clocking and readable regardless of exact playback speed.
-  function synthesizeLtcFrame(bits, totalSamples, startLevel){
-    var samples = new Float32Array(totalSamples);
-    var level = startLevel;
-    var amp = 0.9;
-    for(var i=0;i<80;i++){
-      var s0 = Math.round(i*totalSamples/80);
-      var s1 = Math.round((i+1)*totalSamples/80);
-      level = -level;
-      if(bits[i] === 1){
-        var mid = s0 + Math.round((s1-s0)/2);
-        for(var s=s0;s<mid;s++) samples[s] = level*amp;
-        level = -level;
-        for(var s=mid;s<s1;s++) samples[s] = level*amp;
-      } else {
-        for(var s=s0;s<s1;s++) samples[s] = level*amp;
-      }
-    }
-    return { samples: samples, endLevel: level };
-  }
-
-  // Adds `n` frames to a start code at the given fps, wrapping at 24 hours.
-  function tcAddFrames(code, n, fps){
-    var total = (code.h*3600 + code.m*60 + code.s) * fps + code.f + n;
-    var perDay = fps * 86400;
-    total = ((total % perDay) + perDay) % perDay;
-    var f = total % fps;
-    var totalSeconds = Math.floor(total / fps);
-    var s = totalSeconds % 60;
-    var totalMinutes = Math.floor(totalSeconds / 60);
-    var m = totalMinutes % 60;
-    var h = Math.floor(totalMinutes / 60) % 24;
-    return { h: h, m: m, s: s, f: f };
-  }
-
-  function tcScheduleFrames(){
-    if(!tcRunning || !tcCtx) return;
-    while(tcNextStartTime < tcCtx.currentTime + TC_LOOKAHEAD){
-      var code = tcAddFrames(tcStartCode, tcNextFrameIndex, tcFps);
-      var bits = ltcFrameBits(code.h, code.m, code.s, code.f);
-      var exact = tcCtx.sampleRate / tcFps + tcSampleAccum;
-      var totalSamples = Math.max(1, Math.round(exact));
-      tcSampleAccum = exact - totalSamples;
-      var result = synthesizeLtcFrame(bits, totalSamples, tcLevel);
-      var buf = tcCtx.createBuffer(1, totalSamples, tcCtx.sampleRate);
-      buf.copyToChannel(result.samples, 0);
-      var src = tcCtx.createBufferSource();
-      src.buffer = buf;
-      src.connect(tcCtx.destination);
-      src.start(tcNextStartTime);
-      tcLevel = result.endLevel;
-      tcNextStartTime += totalSamples / tcCtx.sampleRate;
-      tcNextFrameIndex++;
-    }
-    if(tcRunning && tcCtx){
-      var elapsed = Math.max(0, tcCtx.currentTime - tcPlaybackStartCtxTime);
-      var frameIdx = Math.floor(elapsed * tcFps);
-      el.tcReadout.textContent = fmtTcCode(tcAddFrames(tcStartCode, frameIdx, tcFps));
+  /* ---------------- Timecode Generator sync (experimental) ----------------
+     The LTC timecode generator now lives in its own page
+     (Stage_Effects_Timecode_Generator.html) so it can run independently,
+     keep going even if this control panel reloads, and target a dedicated
+     output on a multi-output sound card without competing with this page
+     for the same AudioContext. This page only broadcasts a "start" signal
+     over a same-origin BroadcastChannel -- which only reaches OTHER TABS OF
+     THIS SAME BROWSER, never other computers or devices -- when the show's
+     Start button is pressed, so the Timecode Generator page can auto-start
+     if it happens to be open elsewhere. */
+  var tcSyncChannel = null;
+  try{
+    if('BroadcastChannel' in window) tcSyncChannel = new BroadcastChannel('stage-effects-timecode-sync');
+  }catch(e){ tcSyncChannel = null; }
+  function signalTimecodeStart(){
+    if(tcSyncChannel && el.tcBroadcastStart && el.tcBroadcastStart.checked){
+      try{ tcSyncChannel.postMessage({ type: 'start' }); }catch(e){}
     }
   }
-
-  function tcReadStartCodeFromInputs(){
-    var h = tcClamp(parseInt(el.tcH.value,10)||0, 0, 23);
-    var m = tcClamp(parseInt(el.tcM.value,10)||0, 0, 59);
-    var s = tcClamp(parseInt(el.tcS.value,10)||0, 0, 59);
-    var f = tcClamp(parseInt(el.tcF.value,10)||0, 0, tcFps-1);
-    return { h: h, m: m, s: s, f: f };
-  }
-
-  function startTimecode(){
-    if(tcRunning) return;
-    if(!tcCtx){
-      try{
-        tcCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
-      }catch(e){
-        tcCtx = new (window.AudioContext || window.webkitAudioContext)();
-      }
-    }
-    var resumed = tcCtx.state === 'suspended' ? tcCtx.resume() : Promise.resolve();
-    var sinkSet = (tcOutputDeviceId && typeof tcCtx.setSinkId === 'function')
-      ? tcCtx.setSinkId(tcOutputDeviceId).catch(function(){})
-      : Promise.resolve();
-    Promise.all([resumed, sinkSet]).then(function(){
-      tcStartCode = tcReadStartCodeFromInputs();
-      tcNextFrameIndex = 0;
-      tcLevel = 1;
-      tcSampleAccum = 0;
-      tcNextStartTime = tcCtx.currentTime + 0.15;
-      tcPlaybackStartCtxTime = tcNextStartTime;
-      tcRunning = true;
-      el.tcStartBtn.disabled = true;
-      el.tcStopBtn.disabled = false;
-      el.tcReadout.hidden = false;
-      el.tcRunStatus.textContent = 'Running — rolling from ' + fmtTcCode(tcStartCode) + ' at ' + tcFps + ' fps.';
-      if(tcSchedulerTimer) clearInterval(tcSchedulerTimer);
-      tcSchedulerTimer = setInterval(tcScheduleFrames, TC_INTERVAL_MS);
-      tcScheduleFrames();
-    });
-  }
-
-  function stopTimecode(){
-    tcRunning = false;
-    if(tcSchedulerTimer){ clearInterval(tcSchedulerTimer); tcSchedulerTimer = null; }
-    el.tcStartBtn.disabled = false;
-    el.tcStopBtn.disabled = true;
-    el.tcRunStatus.textContent = 'Not running.';
-  }
-
-  function selectTimecodeOutput(){
-    if(!navigator.mediaDevices || typeof navigator.mediaDevices.selectAudioOutput !== 'function'){
-      el.tcOutputStatus.textContent = 'This browser can\'t pick a specific output for generated audio — that needs Chrome or Edge on this computer. Timecode will play through your default audio output instead.';
-      return;
-    }
-    navigator.mediaDevices.selectAudioOutput().then(function(device){
-      tcOutputDeviceId = device.deviceId;
-      el.tcOutputStatus.textContent = 'Timecode output: ' + (device.label || 'selected device') + '.';
-      if(tcCtx && typeof tcCtx.setSinkId === 'function'){
-        tcCtx.setSinkId(tcOutputDeviceId).catch(function(){});
-      }
-    }).catch(function(){ /* picker cancelled or denied — leave current setting as-is */ });
-  }
-
-  el.tcStartBtn.addEventListener('click', startTimecode);
-  el.tcStopBtn.addEventListener('click', stopTimecode);
-  el.tcSelectOutputBtn.addEventListener('click', selectTimecodeOutput);
-  Array.prototype.forEach.call(el.tcFpsSeg.querySelectorAll('button'), function(b){
-    b.addEventListener('click', function(){
-      tcFps = parseInt(b.getAttribute('data-fps'),10);
-      Array.prototype.forEach.call(el.tcFpsSeg.querySelectorAll('button'), function(bb){
-        bb.classList.toggle('active', bb === b);
-      });
-      el.tcF.max = String(tcFps-1);
-      if((parseInt(el.tcF.value,10)||0) > tcFps-1) el.tcF.value = String(tcFps-1);
-    });
-  });
 
   function broadcastState(){
     if(!bcSettings.enabled) return;
@@ -2739,9 +2514,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     el.pauseBtn.disabled = false;
     tickHandle = setInterval(tick, 1000);
     updatePresenter();
-    if(el.tcAutoStart && el.tcAutoStart.checked && !tcRunning){
-      startTimecode();
-    }
+    signalTimecodeStart();
   }
 
   function pauseTimer(){

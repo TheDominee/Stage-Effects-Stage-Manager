@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Timecode Generator (LTC) &mdash; Stage Effects</title>
+<style>
+  :root{
+    --gold:#a3822f;
+    --gold-2:#c9a94f;
+    --page-bg:#16213f;
+    --panel-bg:#1c2c52;
+    --panel-bg-2:#233769;
+    --text:#f5f6f8;
+    --text-dim:#9aa4bd;
+    --hairline:rgba(255,255,255,.10);
+    --hairline-soft:rgba(255,255,255,.06);
+    --overlay-hover:rgba(255,255,255,.08);
+    --input-bg:rgba(0,0,0,.20);
+    --shadow:rgba(0,0,0,.35);
+    --ok-text:#3fbf6a;
+    --danger-text:#ff4d42;
+    --gold-accent:var(--gold-2);
+    --radius:10px;
+    --mono: 'SF Mono','Consolas','Roboto Mono','Menlo','Cascadia Mono',monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;min-height:100%;
+    background:var(--page-bg);color:var(--text);font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--gold);color:#fff;}
+  #app{display:flex;flex-direction:column;min-height:100vh;}
+  header.topbar{
+    display:flex;align-items:center;gap:16px;padding:14px 20px;
+    background:var(--panel-bg-2);border-bottom:1px solid var(--hairline);flex-wrap:wrap;
+  }
+  header.topbar h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.2px;}
+  header.topbar .sub{color:var(--text-dim);font-size:12px;margin-top:2px;}
+  main{flex:1;display:flex;justify-content:center;padding:24px 16px 40px;}
+  .panel{
+    background:var(--panel-bg);border:1px solid var(--hairline-soft);border-radius:var(--radius);
+    padding:22px 24px;width:100%;max-width:560px;
+  }
+  .panel h2{
+    margin:0 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:1.2px;
+    color:var(--gold-accent);font-weight:700;
+  }
+  .panel .lede{color:var(--text-dim);font-size:12.5px;margin:0 0 18px;line-height:1.5;}
+  .bc-row{margin-bottom:14px;}
+  .bc-row label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-dim);margin-bottom:6px;}
+  .set-time-label{font-size:12px;color:var(--text-dim);margin:0 0 6px;}
+  .bc-optional{font-weight:400;text-transform:none;opacity:.7;}
+  .segmented{display:inline-flex;border:1px solid var(--hairline);border-radius:8px;overflow:hidden;}
+  .segmented button{
+    border:none;background:transparent;color:var(--text-dim);padding:8px 16px;font-size:13px;font-weight:600;
+    cursor:pointer;
+  }
+  .segmented button:not(:last-child){border-right:1px solid var(--hairline);}
+  .segmented button.active{background:var(--gold);color:#1a1206;}
+  .segmented button:hover:not(.active){background:var(--overlay-hover);}
+  .tc-time-row{display:flex;gap:8px;align-items:center;justify-content:center;margin:6px 0 18px;}
+  .tc-time-row input{
+    width:56px;text-align:center;font-family:var(--mono);font-size:22px;
+    background:var(--input-bg);border:1px solid var(--hairline);color:var(--text);
+    border-radius:6px;padding:8px 2px;
+  }
+  .tc-time-row span{color:var(--text-dim);font-size:18px;}
+  .btn{
+    appearance:none;border:1px solid var(--hairline);
+    background:var(--panel-bg-2);color:var(--text);
+    padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;
+    cursor:pointer;white-space:nowrap;
+    box-shadow:0 2px 0 rgba(0,0,0,.28), 0 2px 4px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.07);
+    transition:transform .06s ease, box-shadow .06s ease, background .15s ease, filter .15s ease;
+  }
+  .btn:hover{background:var(--overlay-hover);filter:brightness(1.06);}
+  .btn:active{transform:translateY(2px);box-shadow:0 0 0 rgba(0,0,0,0), inset 0 1px 3px rgba(0,0,0,.3);filter:none;}
+  .btn.gold{background:linear-gradient(180deg,var(--gold-2),var(--gold));color:#1a1206;border:none;
+    box-shadow:0 2px 0 rgba(0,0,0,.35), 0 2px 5px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.4);}
+  .btn.gold:hover{filter:brightness(1.08);}
+  .btn.gold:active{box-shadow:inset 0 1px 4px rgba(0,0,0,.35);filter:none;}
+  .btn.ghost{background:var(--panel-bg-2);}
+  .btn:disabled{opacity:.4;cursor:not-allowed;box-shadow:none;transform:none;}
+  .bc-actions{display:flex;gap:10px;margin:4px 0 16px;flex-wrap:wrap;}
+  .bc-adv-check{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);font-weight:600;cursor:pointer;margin:14px 0 4px;}
+  .bc-adv-check input{cursor:pointer;}
+  .bc-status{font-size:12px;color:var(--text-dim);margin-top:6px;line-height:1.5;}
+  .bc-status.bc-live{color:var(--ok-text);}
+  .bc-status.bc-error{color:var(--danger-text);}
+  .tc-readout{margin-top:18px;font-family:var(--mono);font-size:38px;font-weight:700;color:var(--gold-accent);text-align:center;letter-spacing:3px;}
+  hr.div{border:none;border-top:1px solid var(--hairline-soft);margin:20px 0;}
+  a{color:var(--gold-accent);}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div>
+      <h1>Timecode Generator (LTC)</h1>
+      <div class="sub">Stage Effects &mdash; standalone tool, works alongside (or without) the Stage Manager control panel</div>
+    </div>
+  </header>
+
+  <main>
+    <div class="panel">
+      <h2>Timecode Generator</h2>
+      <p class="lede">
+        Generates real SMPTE/EBU Linear Timecode (LTC) as an audio signal &mdash; the kind a hardware
+        timecode box sends to lighting desks, video switchers, or multitrack recorders &mdash; using your
+        browser's audio engine. Once started it rolls forward continuously from the start code below;
+        it is not tied to any countdown. This is its own page so it can keep running independently and,
+        in Chrome or Edge, send its output to one specific output of a multi-output sound card instead
+        of your default speakers.
+      </p>
+
+      <div class="bc-row">
+        <label>Frame rate</label>
+        <div class="segmented" id="tcFpsSeg">
+          <button type="button" data-fps="24">24</button>
+          <button type="button" data-fps="25" class="active">25 (PAL)</button>
+          <button type="button" data-fps="30">30</button>
+        </div>
+      </div>
+
+      <div class="set-time-label">Start timecode <span class="bc-optional">(rolls forward from here once started &mdash; hours : minutes : seconds : frames)</span></div>
+      <div class="tc-time-row">
+        <input id="tcH" type="number" min="0" max="23" value="1" aria-label="Timecode hours">
+        <span>:</span>
+        <input id="tcM" type="number" min="0" max="59" value="0" aria-label="Timecode minutes">
+        <span>:</span>
+        <input id="tcS" type="number" min="0" max="59" value="0" aria-label="Timecode seconds">
+        <span>:</span>
+        <input id="tcF" type="number" min="0" max="29" value="0" aria-label="Timecode frames">
+      </div>
+
+      <div class="bc-actions">
+        <button class="btn gold" id="tcStartBtn">Start Timecode</button>
+        <button class="btn ghost" id="tcStopBtn" disabled>Stop Timecode</button>
+        <button class="btn ghost" id="tcSelectOutputBtn">Select Timecode Output&hellip;</button>
+      </div>
+      <div class="bc-status" id="tcOutputStatus">Not selected yet &mdash; will use your default audio output. Click "Select Timecode Output" to send it to one output of a multi-output sound card instead (Chrome or Edge on this computer, needed for that).</div>
+      <div class="bc-status" id="tcRunStatus">Not running.</div>
+      <div class="tc-readout" id="tcReadout" hidden>00:00:00:00</div>
+
+      <hr class="div">
+
+      <label class="bc-adv-check"><input type="checkbox" id="tcListenAutoStart" checked> Auto-start when the Stage Manager control panel's Start button is pressed</label>
+      <div class="bc-status" id="tcSyncStatus">&nbsp;</div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+  var el = {
+    tcFpsSeg: document.getElementById('tcFpsSeg'),
+    tcH: document.getElementById('tcH'),
+    tcM: document.getElementById('tcM'),
+    tcS: document.getElementById('tcS'),
+    tcF: document.getElementById('tcF'),
+    tcStartBtn: document.getElementById('tcStartBtn'),
+    tcStopBtn: document.getElementById('tcStopBtn'),
+    tcSelectOutputBtn: document.getElementById('tcSelectOutputBtn'),
+    tcOutputStatus: document.getElementById('tcOutputStatus'),
+    tcRunStatus: document.getElementById('tcRunStatus'),
+    tcReadout: document.getElementById('tcReadout'),
+    tcListenAutoStart: document.getElementById('tcListenAutoStart'),
+    tcSyncStatus: document.getElementById('tcSyncStatus')
+  };
+
+  /* ---------------- LTC timecode generator (experimental) ----------------
+     Generates real SMPTE/EBU Linear Timecode as an audio signal — the same
+     kind of signal a hardware timecode box sends to lighting desks, video
+     switchers, or multitrack recorders — using the Web Audio API. It is a
+     continuously-rolling clock (not tied frame-by-frame to any countdown):
+     you set a start code, and once started it just keeps counting up for the
+     rest of the show, which is how real productions use timecode as a shared
+     reference rather than as another countdown.
+
+     Frames are pre-rendered one at a time as tiny audio buffers and scheduled
+     back-to-back against the AudioContext's own sample clock (not JS timers),
+     which is what keeps it accurate — JS only decides *when* to render ahead,
+     never how the samples are timed. A small fractional-sample accumulator
+     (tcSampleAccum) prevents that per-frame rounding from drifting over a
+     multi-hour show.
+
+     Sending it to a specific output on a multi-output sound card (rather
+     than your default speakers) uses AudioContext.setSinkId() and
+     navigator.mediaDevices.selectAudioOutput() — both Chrome/Edge-only as of
+     this writing, so that part silently falls back to the default output
+     everywhere else while the rest of this still works. */
+  var tcFps = 25;
+  var tcCtx = null;
+  var tcRunning = false;
+  var tcOutputDeviceId = null;
+  var tcSchedulerTimer = null;
+  var tcNextFrameIndex = 0;
+  var tcNextStartTime = 0;
+  var tcPlaybackStartCtxTime = 0;
+  var tcLevel = 1;
+  var tcSampleAccum = 0;
+  var tcStartCode = { h: 1, m: 0, s: 0, f: 0 };
+  var TC_LOOKAHEAD = 0.25;   // seconds of audio to keep scheduled ahead
+  var TC_INTERVAL_MS = 60;   // how often the scheduler tops that up
+
+  function tcClamp(v, lo, hi){ return Math.min(hi, Math.max(lo, v)); }
+  function tcPad2(n){ return String(n).padStart(2,'0'); }
+  function fmtTcCode(c){ return tcPad2(c.h)+':'+tcPad2(c.m)+':'+tcPad2(c.s)+':'+tcPad2(c.f); }
+
+  // Builds the 80-bit SMPTE/EBU LTC frame word for one frame (bit 0 = first
+  // bit transmitted). User-bits and the BGF/parity flags (bits 27/43/58/59)
+  // are left at 0 throughout — a fully valid, defined state that every LTC
+  // reader accepts; only the sync word and the four BCD time fields actually
+  // matter for basic hours/minutes/seconds/frames decoding.
+  function ltcFrameBits(h, m, s, f){
+    var bits = new Array(80).fill(0);
+    function setField(startBit, value, width){
+      for(var i=0;i<width;i++) bits[startBit+i] = (value >> i) & 1;
+    }
+    setField(0, f % 10, 4);            // frame units
+    setField(8, Math.floor(f/10), 2);  // frame tens
+    setField(16, s % 10, 4);           // seconds units
+    setField(24, Math.floor(s/10), 3); // seconds tens
+    setField(32, m % 10, 4);           // minutes units
+    setField(40, Math.floor(m/10), 3); // minutes tens
+    setField(48, h % 10, 4);           // hours units
+    setField(56, Math.floor(h/10), 2); // hours tens
+    var SYNC = 0x3FFD;
+    for(var i=0;i<16;i++) bits[64+i] = (SYNC >> (15-i)) & 1; // sync word, MSB-first
+    return bits;
+  }
+
+  // Biphase Mark encodes 80 bits into `totalSamples` of a +/-1 square wave:
+  // a transition always happens at the start of every bit cell, and ONLY a 1
+  // bit gets a second transition at the cell's midpoint. This is what makes
+  // LTC self-clocking and readable regardless of exact playback speed.
+  function synthesizeLtcFrame(bits, totalSamples, startLevel){
+    var samples = new Float32Array(totalSamples);
+    var level = startLevel;
+    var amp = 0.9;
+    for(var i=0;i<80;i++){
+      var s0 = Math.round(i*totalSamples/80);
+      var s1 = Math.round((i+1)*totalSamples/80);
+      level = -level;
+      if(bits[i] === 1){
+        var mid = s0 + Math.round((s1-s0)/2);
+        for(var s=s0;s<mid;s++) samples[s] = level*amp;
+        level = -level;
+        for(var s=mid;s<s1;s++) samples[s] = level*amp;
+      } else {
+        for(var s=s0;s<s1;s++) samples[s] = level*amp;
+      }
+    }
+    return { samples: samples, endLevel: level };
+  }
+
+  // Adds `n` frames to a start code at the given fps, wrapping at 24 hours.
+  function tcAddFrames(code, n, fps){
+    var total = (code.h*3600 + code.m*60 + code.s) * fps + code.f + n;
+    var perDay = fps * 86400;
+    total = ((total % perDay) + perDay) % perDay;
+    var f = total % fps;
+    var totalSeconds = Math.floor(total / fps);
+    var s = totalSeconds % 60;
+    var totalMinutes = Math.floor(totalSeconds / 60);
+    var m = totalMinutes % 60;
+    var h = Math.floor(totalMinutes / 60) % 24;
+    return { h: h, m: m, s: s, f: f };
+  }
+
+  function tcScheduleFrames(){
+    if(!tcRunning || !tcCtx) return;
+    while(tcNextStartTime < tcCtx.currentTime + TC_LOOKAHEAD){
+      var code = tcAddFrames(tcStartCode, tcNextFrameIndex, tcFps);
+      var bits = ltcFrameBits(code.h, code.m, code.s, code.f);
+      var exact = tcCtx.sampleRate / tcFps + tcSampleAccum;
+      var totalSamples = Math.max(1, Math.round(exact));
+      tcSampleAccum = exact - totalSamples;
+      var result = synthesizeLtcFrame(bits, totalSamples, tcLevel);
+      var buf = tcCtx.createBuffer(1, totalSamples, tcCtx.sampleRate);
+      buf.copyToChannel(result.samples, 0);
+      var src = tcCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(tcCtx.destination);
+      src.start(tcNextStartTime);
+      tcLevel = result.endLevel;
+      tcNextStartTime += totalSamples / tcCtx.sampleRate;
+      tcNextFrameIndex++;
+    }
+    if(tcRunning && tcCtx){
+      var elapsed = Math.max(0, tcCtx.currentTime - tcPlaybackStartCtxTime);
+      var frameIdx = Math.floor(elapsed * tcFps);
+      el.tcReadout.textContent = fmtTcCode(tcAddFrames(tcStartCode, frameIdx, tcFps));
+    }
+  }
+
+  function tcReadStartCodeFromInputs(){
+    var h = tcClamp(parseInt(el.tcH.value,10)||0, 0, 23);
+    var m = tcClamp(parseInt(el.tcM.value,10)||0, 0, 59);
+    var s = tcClamp(parseInt(el.tcS.value,10)||0, 0, 59);
+    var f = tcClamp(parseInt(el.tcF.value,10)||0, 0, tcFps-1);
+    return { h: h, m: m, s: s, f: f };
+  }
+
+  function startTimecode(){
+    if(tcRunning) return;
+    if(!tcCtx){
+      try{
+        tcCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+      }catch(e){
+        tcCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+    }
+    var resumed = tcCtx.state === 'suspended' ? tcCtx.resume() : Promise.resolve();
+    var sinkSet = (tcOutputDeviceId && typeof tcCtx.setSinkId === 'function')
+      ? tcCtx.setSinkId(tcOutputDeviceId).catch(function(){})
+      : Promise.resolve();
+    Promise.all([resumed, sinkSet]).then(function(){
+      tcStartCode = tcReadStartCodeFromInputs();
+      tcNextFrameIndex = 0;
+      tcLevel = 1;
+      tcSampleAccum = 0;
+      tcNextStartTime = tcCtx.currentTime + 0.15;
+      tcPlaybackStartCtxTime = tcNextStartTime;
+      tcRunning = true;
+      el.tcStartBtn.disabled = true;
+      el.tcStopBtn.disabled = false;
+      el.tcReadout.hidden = false;
+      el.tcRunStatus.textContent = 'Running — rolling from ' + fmtTcCode(tcStartCode) + ' at ' + tcFps + ' fps.';
+      if(tcSchedulerTimer) clearInterval(tcSchedulerTimer);
+      tcSchedulerTimer = setInterval(tcScheduleFrames, TC_INTERVAL_MS);
+      tcScheduleFrames();
+    });
+  }
+
+  function stopTimecode(){
+    tcRunning = false;
+    if(tcSchedulerTimer){ clearInterval(tcSchedulerTimer); tcSchedulerTimer = null; }
+    el.tcStartBtn.disabled = false;
+    el.tcStopBtn.disabled = true;
+    el.tcRunStatus.textContent = 'Not running.';
+  }
+
+  function selectTimecodeOutput(){
+    if(!navigator.mediaDevices || typeof navigator.mediaDevices.selectAudioOutput !== 'function'){
+      el.tcOutputStatus.textContent = 'This browser can\'t pick a specific output for generated audio — that needs Chrome or Edge on this computer. Timecode will play through your default audio output instead.';
+      return;
+    }
+    navigator.mediaDevices.selectAudioOutput().then(function(device){
+      tcOutputDeviceId = device.deviceId;
+      el.tcOutputStatus.textContent = 'Timecode output: ' + (device.label || 'selected device') + '.';
+      if(tcCtx && typeof tcCtx.setSinkId === 'function'){
+        tcCtx.setSinkId(tcOutputDeviceId).catch(function(){});
+      }
+    }).catch(function(){ /* picker cancelled or denied — leave current setting as-is */ });
+  }
+
+  el.tcStartBtn.addEventListener('click', startTimecode);
+  el.tcStopBtn.addEventListener('click', stopTimecode);
+  el.tcSelectOutputBtn.addEventListener('click', selectTimecodeOutput);
+  Array.prototype.forEach.call(el.tcFpsSeg.querySelectorAll('button'), function(b){
+    b.addEventListener('click', function(){
+      tcFps = parseInt(b.getAttribute('data-fps'),10);
+      Array.prototype.forEach.call(el.tcFpsSeg.querySelectorAll('button'), function(bb){
+        bb.classList.toggle('active', bb === b);
+      });
+      el.tcF.max = String(tcFps-1);
+      if((parseInt(el.tcF.value,10)||0) > tcFps-1) el.tcF.value = String(tcFps-1);
+    });
+  });
+
+  /* ---------------- Cross-tab sync with the Stage Manager control panel ----
+     The Stage Manager control panel (Stage_Effects_Stage_Manager.html /
+     Spaan_Stage_Manager_Countdown.html) broadcasts a "start" message over a
+     same-origin BroadcastChannel when its own Start button is pressed. That
+     only reaches OTHER TABS OF THIS SAME BROWSER — never other computers or
+     devices — so this only auto-starts if this page happens to be open in
+     another tab alongside the control panel, on the same machine. */
+  var tcSyncChannel = null;
+  try{
+    if('BroadcastChannel' in window) tcSyncChannel = new BroadcastChannel('stage-effects-timecode-sync');
+  }catch(e){ tcSyncChannel = null; }
+
+  if(tcSyncChannel){
+    el.tcSyncStatus.textContent = 'Listening for the Stage Manager control panel\'s Start button in other tabs of this browser.';
+    tcSyncChannel.onmessage = function(ev){
+      if(ev && ev.data && ev.data.type === 'start'){
+        if(el.tcListenAutoStart.checked && !tcRunning){
+          startTimecode();
+        }
+      }
+    };
+  } else {
+    el.tcSyncStatus.textContent = 'This browser doesn\'t support tab-to-tab sync — use the Start Timecode button above instead.';
+    el.tcListenAutoStart.checked = false;
+    el.tcListenAutoStart.disabled = true;
+  }
+})();
+</script>
+</body>
+</html>
