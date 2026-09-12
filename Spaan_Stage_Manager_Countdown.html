@@ -387,10 +387,18 @@
     border-color:var(--hairline);background:var(--input-bg);
   }
   table.cue-table input.row-warn::placeholder{color:var(--text-dim);opacity:.55;}
+  table.cue-table input.row-tc{
+    width:98px;background:transparent;border:1px solid transparent;color:var(--gold-accent);
+    text-align:center;font-family:var(--mono);border-radius:4px;padding:3px 0;font-size:11px;
+  }
+  table.cue-table input.row-tc:hover, table.cue-table input.row-tc:focus{
+    border-color:var(--hairline);background:var(--input-bg);
+  }
+  table.cue-table input.row-tc::placeholder{color:var(--text-dim);opacity:.5;font-size:10.5px;}
   table.cue-table td.dur-cell{white-space:nowrap;}
-  table.cue-table .dur-line, table.cue-table .warn-line{display:flex;align-items:center;gap:1px;}
-  table.cue-table .warn-line{margin-top:3px;}
-  table.cue-table .warn-sep{color:var(--text-dim);font-size:10.5px;margin-right:2px;}
+  table.cue-table .dur-line, table.cue-table .warn-line, table.cue-table .tc-line{display:flex;align-items:center;gap:1px;}
+  table.cue-table .warn-line, table.cue-table .tc-line{margin-top:3px;}
+  table.cue-table .warn-sep, table.cue-table .tc-sep{color:var(--text-dim);font-size:10.5px;margin-right:2px;}
   .type-pill{font-size:10px;font-weight:700;padding:2px 7px;border-radius:12px;letter-spacing:.4px;text-transform:uppercase;}
   .type-pill.performance{background:var(--ok-chip);color:var(--ok-text);}
   .type-pill.changeover{background:var(--warn-chip);color:var(--gold-accent);}
@@ -762,7 +770,7 @@
       <div class="timecode-box">
         <h3>Timecode Generator (LTC) <span class="bc-hint">(experimental &mdash; now its own tool)</span></h3>
         <div class="bc-status">Runs as a separate page so it can keep going on its own and target a dedicated output on a multi-output sound card. <a href="Stage_Effects_Timecode_Generator.html" target="_blank" rel="noopener">Open Timecode Generator&nbsp;&#8599;</a></div>
-        <label class="bc-adv-check"><input type="checkbox" id="tcBroadcastStart" checked> Signal it to start when this Start button is pressed <span class="bc-optional">(only works while the Timecode Generator page is also open in another tab of this same browser)</span></label>
+        <label class="bc-adv-check"><input type="checkbox" id="tcBroadcastStart" checked> Keep it in sync with Start / Pause / Reset, and jump to each cue's own linked timecode <span class="bc-optional">(only works while the Timecode Generator page is also open in another tab of this same browser)</span></label>
       </div>
     </section>
   </main>
@@ -1328,19 +1336,40 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
      (Stage_Effects_Timecode_Generator.html) so it can run independently,
      keep going even if this control panel reloads, and target a dedicated
      output on a multi-output sound card without competing with this page
-     for the same AudioContext. This page only broadcasts a "start" signal
-     over a same-origin BroadcastChannel -- which only reaches OTHER TABS OF
-     THIS SAME BROWSER, never other computers or devices -- when the show's
-     Start button is pressed, so the Timecode Generator page can auto-start
-     if it happens to be open elsewhere. */
+     for the same AudioContext. This page broadcasts start/pause/reset
+     signals over a same-origin BroadcastChannel -- which only reaches OTHER
+     TABS OF THIS SAME BROWSER, never other computers or devices -- so the
+     Timecode Generator page can stay in sync if it happens to be open
+     elsewhere. Each cue can also carry its own linked timecode (the "⏱"
+     field in the running order); when a cue STARTS FRESH (not just resuming
+     after a pause) with a linked code set, that code is sent along too so
+     the Timecode Generator jumps to it and begins a new roll from there --
+     e.g. Cue 1 -> 01:00:00:00, Cue 2 -> 02:00:00:00, each cue its own
+     distinct "slot". Resuming the same cue after a pause omits the code so
+     the Timecode Generator just continues from wherever it already is. */
   var tcSyncChannel = null;
   try{
     if('BroadcastChannel' in window) tcSyncChannel = new BroadcastChannel('stage-effects-timecode-sync');
   }catch(e){ tcSyncChannel = null; }
-  function signalTimecodeStart(){
-    if(tcSyncChannel && el.tcBroadcastStart && el.tcBroadcastStart.checked){
-      try{ tcSyncChannel.postMessage({ type: 'start' }); }catch(e){}
-    }
+  function signalTimecodeStart(isFreshCueStart){
+    if(!tcSyncChannel || !el.tcBroadcastStart || !el.tcBroadcastStart.checked) return;
+    try{
+      var msg = { type: 'start' };
+      if(isFreshCueStart && currentCueId){
+        var idx = findCueIndex(currentCueId);
+        var c = idx >= 0 ? cueList[idx] : null;
+        if(c && c.tc) msg.tc = c.tc;
+      }
+      tcSyncChannel.postMessage(msg);
+    }catch(e){}
+  }
+  function signalTimecodePause(){
+    if(!tcSyncChannel || !el.tcBroadcastStart || !el.tcBroadcastStart.checked) return;
+    try{ tcSyncChannel.postMessage({ type: 'pause' }); }catch(e){}
+  }
+  function signalTimecodeReset(){
+    if(!tcSyncChannel || !el.tcBroadcastStart || !el.tcBroadcastStart.checked) return;
+    try{ tcSyncChannel.postMessage({ type: 'reset' }); }catch(e){}
   }
 
   function broadcastState(){
@@ -2323,8 +2352,29 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       warnLine.appendChild(warnSep);
       warnLine.appendChild(warnIn);
       warnLine.appendChild(document.createTextNode('s'));
+
+      var tcLine = document.createElement('div');
+      tcLine.className = 'tc-line';
+      var tcIn = document.createElement('input');
+      tcIn.className = 'row-tc'; tcIn.type = 'text'; tcIn.spellcheck = false;
+      var tcTitle = 'This cue\'s own linked timecode. When this cue starts, the Timecode Generator (if open in another tab and set to sync) jumps to this exact code and begins a fresh roll from it. Leave blank to have timecode just keep rolling from wherever it already is.';
+      tcIn.title = tcTitle;
+      tcIn.placeholder = 'HH:MM:SS:FF';
+      tcIn.value = c.tc || '';
+      tcIn.addEventListener('change', function(){
+        var norm = normalizeTcCode(tcIn.value);
+        if(norm){ c.tc = norm; tcIn.value = norm; } else { delete c.tc; tcIn.value = ''; }
+        persist();
+      });
+      var tcSep = document.createElement('span');
+      tcSep.className = 'tc-sep';
+      tcSep.textContent = '⏱';
+      tcSep.title = tcTitle;
+      tcLine.appendChild(tcSep);
+      tcLine.appendChild(tcIn);
       tdDur.appendChild(durLine);
       tdDur.appendChild(warnLine);
+      tdDur.appendChild(tcLine);
 
       var tdSched = document.createElement('td');
       tdSched.textContent = sched[idx] || '—';
@@ -2616,6 +2666,22 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     return 60;
   }
 
+  // Validates/normalizes a per-cue linked timecode ("HH:MM:SS:FF") typed into
+  // the running order — pads each field to 2 digits, clamps to sane ranges.
+  // Returns null for anything that doesn't parse (the field is cleared then).
+  function normalizeTcCode(str){
+    if(!str) return null;
+    var m = /^\s*(\d{1,2})\s*:\s*(\d{1,2})\s*:\s*(\d{1,2})\s*:\s*(\d{1,2})\s*$/.exec(str);
+    if(!m) return null;
+    function clamp(v, hi){ return Math.max(0, Math.min(hi, v)); }
+    function p2(n){ return (n<10?'0':'')+n; }
+    var h = clamp(parseInt(m[1],10)||0, 23);
+    var mi = clamp(parseInt(m[2],10)||0, 59);
+    var s = clamp(parseInt(m[3],10)||0, 59);
+    var f = clamp(parseInt(m[4],10)||0, 59); // fps-specific cap is enforced on the Timecode Generator page itself
+    return p2(h)+':'+p2(mi)+':'+p2(s)+':'+p2(f);
+  }
+
   function getState(){
     if(!timerArmed()) return 'idle';
     if(isFreeRunUp()) return 'normal';
@@ -2673,6 +2739,12 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
   function startTimer(){
     if(running) return;
+    // A "fresh" start (remaining still equals the full loaded duration) is a
+    // cue beginning for the first time -- that's when its own linked
+    // timecode (if any) should apply. Resuming after a Pause part-way
+    // through a cue is NOT fresh, so the Timecode Generator just keeps
+    // rolling from wherever it already is instead of re-jumping.
+    var isFreshCueStart = !isFreeRunUp() && lastLoadedDuration > 0 && remaining === lastLoadedDuration;
     if(isFreeRunUp()){
       upRunStarted = true;
     } else {
@@ -2687,7 +2759,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     el.pauseBtn.disabled = false;
     tickHandle = setInterval(tick, 1000);
     updatePresenter();
-    signalTimecodeStart();
+    signalTimecodeStart(isFreshCueStart);
   }
 
   function pauseTimer(){
@@ -2696,6 +2768,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     el.pauseBtn.disabled = true;
     clearInterval(tickHandle);
     updatePresenter();
+    signalTimecodePause();
   }
 
   function stopTimerInternal(clearAlarm){
@@ -2727,6 +2800,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     }
     updateTimeDisplay();
     updatePresenter();
+    signalTimecodeReset();
   }
 
   function applyManualSetTime(){
@@ -3258,6 +3332,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       cueList: cueList.map(function(c){
         var out = { id: c.id, type: c.type, name: c.name, duration: c.duration, notes: c.notes || '', printNote: !!c.printNote };
         if(typeof c.warnAt === 'number' && c.warnAt > 0) out.warnAt = c.warnAt;
+        if(c.tc) out.tc = c.tc;
         if(isCustomType(c.type)){
           out.kindLabel = c.kindLabel || 'Custom';
           out.kindColor = c.kindColor || '#8890a8';
@@ -3444,7 +3519,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       ['Show Start', data.showStartTime || ''],
       ['Curfew', data.showCurfew || ''],
       [],
-      ['Type', 'Name', 'Minutes', 'Seconds', 'Notes', 'Print Note', 'Color', 'Warn (s)']
+      ['Type', 'Name', 'Minutes', 'Seconds', 'Notes', 'Print Note', 'Color', 'Warn (s)', 'TC']
     ];
     data.cueList.forEach(function(c){
       var typeLabel = c.type === 'performance' ? 'Performance' : c.type === 'changeover' ? 'Changeover' : (c.kindLabel || 'Custom');
@@ -3452,10 +3527,10 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       var secs = (c.duration || 0) % 60;
       var color = isCustomType(c.type) ? (c.kindColor || '') : '';
       var warnAt = (typeof c.warnAt === 'number' && c.warnAt > 0) ? c.warnAt : '';
-      aoa.push([typeLabel, c.name || '', mins, secs, c.notes || '', c.printNote ? 'Yes' : '', color, warnAt]);
+      aoa.push([typeLabel, c.name || '', mins, secs, c.notes || '', c.printNote ? 'Yes' : '', color, warnAt, c.tc || '']);
     });
     var ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [{ wch: 16 }, { wch: 34 }, { wch: 9 }, { wch: 9 }, { wch: 24 }, { wch: 11 }, { wch: 10 }, { wch: 10 }];
+    ws['!cols'] = [{ wch: 16 }, { wch: 34 }, { wch: 9 }, { wch: 9 }, { wch: 24 }, { wch: 11 }, { wch: 10 }, { wch: 10 }, { wch: 13 }];
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Running Order');
     return wb;
@@ -3529,6 +3604,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       };
       var warnAtVal = parseInt(c && c.warnAt, 10);
       if(warnAtVal > 0) cue.warnAt = warnAtVal;
+      var tcVal = normalizeTcCode(c && c.tc);
+      if(tcVal) cue.tc = tcVal;
       if(isCustomType(type)){
         var k = findCustomKind(type);
         cue.kindLabel = (c && typeof c.kindLabel === 'string' && c.kindLabel) || (k ? k.label : 'Custom');
@@ -3632,7 +3709,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     function cellStr(v){ return (v === null || v === undefined) ? '' : String(v).trim(); }
 
     var headerRowIdx = -1;
-    var col = { type:-1, name:-1, min:-1, sec:-1, color:-1, notes:-1, print:-1, warn:-1 };
+    var col = { type:-1, name:-1, min:-1, sec:-1, color:-1, notes:-1, print:-1, warn:-1, tc:-1 };
     for(var i=0;i<rows.length;i++){
       var row = rows[i] || [];
       var lower = row.map(function(c){ return cellStr(c).toLowerCase(); });
@@ -3648,6 +3725,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
           if(col.print === -1 && lower[j].indexOf('print') === 0) col.print = j;
           if(col.notes === -1 && lower[j].indexOf('note') === 0) col.notes = j;
           if(col.warn === -1 && lower[j].indexOf('warn') === 0) col.warn = j;
+          if(col.tc === -1 && lower[j].indexOf('tc') === 0) col.tc = j;
         }
         break;
       }
@@ -3698,6 +3776,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       var cue = { id: uid(), type: type, name: name.slice(0,80), duration: duration, notes: notes.slice(0,300), printNote: printNote };
       var warnAtCell = col.warn !== -1 ? Math.round(numFromCell(dr[col.warn])) : 0;
       if(warnAtCell > 0) cue.warnAt = warnAtCell;
+      var tcCell = col.tc !== -1 ? normalizeTcCode(cellStr(dr[col.tc])) : null;
+      if(tcCell) cue.tc = tcCell;
       if(isCustomType(type)){
         cue.kindLabel = kindByLabel[typeLower].label;
         cue.kindColor = kindByLabel[typeLower].color;

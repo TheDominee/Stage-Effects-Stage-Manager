@@ -147,7 +147,7 @@
 
       <hr class="div">
 
-      <label class="bc-adv-check"><input type="checkbox" id="tcListenAutoStart" checked> Auto-start when the Stage Manager control panel's Start button is pressed</label>
+      <label class="bc-adv-check"><input type="checkbox" id="tcListenAutoStart" checked> Stay in sync with the Stage Manager control panel (Start / Pause / Reset, and each cue's own linked timecode)</label>
       <div class="bc-status" id="tcSyncStatus">&nbsp;</div>
     </div>
   </main>
@@ -344,6 +344,70 @@
     el.tcRunStatus.textContent = 'Not running.';
   }
 
+  // Pausing keeps tcNextFrameIndex/tcStartCode intact (unlike Stop, which is a
+  // full halt) so a later resumeTimecode() can pick up exactly where this
+  // left off, instead of jumping back to the Start Timecode fields.
+  function pauseTimecode(){
+    if(!tcRunning) return;
+    tcRunning = false;
+    if(tcSchedulerTimer){ clearInterval(tcSchedulerTimer); tcSchedulerTimer = null; }
+    el.tcStartBtn.disabled = false;
+    el.tcStopBtn.disabled = false;
+    el.tcRunStatus.textContent = 'Paused at ' + fmtTcCode(tcAddFrames(tcStartCode, tcNextFrameIndex, tcFps)) + '.';
+  }
+
+  // True once there is a paused position to continue from (started, then
+  // paused, not yet stopped/reset).
+  function tcHasPausedState(){
+    return !!tcCtx && !tcRunning && tcNextFrameIndex > 0;
+  }
+
+  // Resumes rolling from the paused position (same tcStartCode/frame count)
+  // rather than re-reading the Start Timecode fields. Re-anchors the
+  // elapsed-time bookkeeping so the paused real-world gap isn't counted.
+  function resumeTimecode(){
+    if(!tcHasPausedState()){ startTimecode(); return; }
+    var resumed = tcCtx.state === 'suspended' ? tcCtx.resume() : Promise.resolve();
+    resumed.then(function(){
+      tcNextStartTime = tcCtx.currentTime + 0.15;
+      tcPlaybackStartCtxTime = tcNextStartTime - (tcNextFrameIndex / tcFps);
+      tcRunning = true;
+      el.tcStartBtn.disabled = true;
+      el.tcStopBtn.disabled = false;
+      el.tcReadout.hidden = false;
+      el.tcRunStatus.textContent = 'Running — rolling from ' + fmtTcCode(tcStartCode) + ' at ' + tcFps + ' fps.';
+      if(tcSchedulerTimer) clearInterval(tcSchedulerTimer);
+      tcSchedulerTimer = setInterval(tcScheduleFrames, TC_INTERVAL_MS);
+      tcScheduleFrames();
+    });
+  }
+
+  // A full halt: stops rolling and clears the paused position too, so a
+  // later "start" with no linked code behaves as a genuinely fresh start
+  // (reads the Start Timecode fields) rather than an implicit resume.
+  function resetTimecodeState(){
+    stopTimecode();
+    tcNextFrameIndex = 0;
+    tcLevel = 1;
+    tcSampleAccum = 0;
+    el.tcReadout.hidden = true;
+    el.tcRunStatus.textContent = 'Not running.';
+  }
+
+  // Parses a per-cue linked timecode string ("HH:MM:SS:FF") sent over from
+  // the Stage Manager control panel's running order.
+  function tcParseCode(str){
+    if(!str) return null;
+    var m = /^\s*(\d{1,2}):(\d{1,2}):(\d{1,2}):(\d{1,2})\s*$/.exec(String(str));
+    if(!m) return null;
+    return {
+      h: tcClamp(parseInt(m[1],10)||0, 0, 23),
+      m: tcClamp(parseInt(m[2],10)||0, 0, 59),
+      s: tcClamp(parseInt(m[3],10)||0, 0, 59),
+      f: tcClamp(parseInt(m[4],10)||0, 0, tcFps-1)
+    };
+  }
+
   function selectTimecodeOutput(){
     if(!navigator.mediaDevices || typeof navigator.mediaDevices.selectAudioOutput !== 'function'){
       el.tcOutputStatus.textContent = 'This browser can\'t pick a specific output for generated audio — that needs Chrome or Edge on this computer. Timecode will play through your default audio output instead.';
@@ -374,23 +438,50 @@
 
   /* ---------------- Cross-tab sync with the Stage Manager control panel ----
      The Stage Manager control panel (Stage_Effects_Stage_Manager.html /
-     Spaan_Stage_Manager_Countdown.html) broadcasts a "start" message over a
-     same-origin BroadcastChannel when its own Start button is pressed. That
-     only reaches OTHER TABS OF THIS SAME BROWSER — never other computers or
-     devices — so this only auto-starts if this page happens to be open in
-     another tab alongside the control panel, on the same machine. */
+     Spaan_Stage_Manager_Countdown.html) broadcasts start/pause/reset
+     messages over a same-origin BroadcastChannel as its own Start/Pause/
+     Reset buttons are pressed. That only reaches OTHER TABS OF THIS SAME
+     BROWSER — never other computers or devices — so this only stays in sync
+     if this page happens to be open in another tab alongside the control
+     panel, on the same machine.
+
+     A "start" message can carry a "tc" code — sent only when a cue with its
+     own linked timecode is STARTING FRESH (not just resuming after a
+     pause). When present, this page jumps its Start Timecode fields to that
+     code and begins a brand-new roll from it (so e.g. Cue 1 can roll from
+     01:00:00:00 and Cue 2 from 02:00:00:00, each its own distinct slot).
+     When absent, "start" either begins a fresh roll from whatever is
+     already in the Start Timecode fields (first-ever start) or resumes
+     exactly where a paused roll left off. */
   var tcSyncChannel = null;
   try{
     if('BroadcastChannel' in window) tcSyncChannel = new BroadcastChannel('stage-effects-timecode-sync');
   }catch(e){ tcSyncChannel = null; }
 
   if(tcSyncChannel){
-    el.tcSyncStatus.textContent = 'Listening for the Stage Manager control panel\'s Start button in other tabs of this browser.';
+    el.tcSyncStatus.textContent = 'Listening for the Stage Manager control panel\'s Start / Pause / Reset, and each cue\'s own linked timecode, in other tabs of this browser.';
     tcSyncChannel.onmessage = function(ev){
-      if(ev && ev.data && ev.data.type === 'start'){
-        if(el.tcListenAutoStart.checked && !tcRunning){
+      if(!ev || !ev.data || !el.tcListenAutoStart.checked) return;
+      var msg = ev.data;
+      if(msg.type === 'start'){
+        var linked = tcParseCode(msg.tc);
+        if(linked){
+          el.tcH.value = String(linked.h);
+          el.tcM.value = String(linked.m);
+          el.tcS.value = String(linked.s);
+          el.tcF.value = String(Math.min(linked.f, tcFps-1));
+          if(tcRunning) stopTimecode();
+          tcNextFrameIndex = 0;
+          startTimecode();
+        } else if(tcHasPausedState()){
+          resumeTimecode();
+        } else if(!tcRunning){
           startTimecode();
         }
+      } else if(msg.type === 'pause'){
+        pauseTimecode();
+      } else if(msg.type === 'reset'){
+        resetTimecodeState();
       }
     };
   } else {
