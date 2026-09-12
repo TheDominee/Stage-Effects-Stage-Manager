@@ -519,13 +519,13 @@
       <div class="cue-total" id="cueTotal"></div>
 
       <div class="crew-talk-box">
-        <h3>Crew Talk <span class="bc-hint">(live voice with your Crew broadcast link &mdash; needs Broadcasting + the advanced Firebase setup; best on the same WiFi as your crew; hold the Spacebar to talk)</span></h3>
+        <h3>Crew Talk <span class="bc-hint">(live voice with your Crew broadcast link &mdash; needs Broadcasting + the advanced Firebase setup; best on the same WiFi as your crew; hold the "T" key to talk)</span></h3>
         <div class="crew-talk-body">
           <button class="btn small gold" id="voiceJoinBtn">&#127908; Join Voice</button>
           <div class="crew-talk-controls" id="voiceControls" hidden>
             <div class="voice-target-row" id="voiceTargetRow"></div>
             <div class="voice-talk-row">
-              <button class="voice-talk-btn" id="voiceTalkBtn" disabled title="Hold this button, or hold the Spacebar, to talk">Push To Talk</button>
+              <button class="voice-talk-btn" id="voiceTalkBtn" disabled title="Hold this button, or hold the &quot;T&quot; key, to talk">Push To Talk</button>
               <label class="voice-always-on"><input type="checkbox" id="voiceAlwaysOn"> Always On (hands-free)</label>
               <button class="btn small ghost" id="voiceLeaveBtn">Leave Voice</button>
             </div>
@@ -712,7 +712,7 @@
   </main>
 
   <footer class="hint">
-    <kbd>Space</kbd> start/pause (or hold to talk on Crew Talk voice) &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>F</kbd> fullscreen this window &nbsp; <kbd>&larr;</kbd><kbd>&rarr;</kbd> previous/next cue &nbsp;
+    <kbd>Space</kbd> start/pause &nbsp; <kbd>T</kbd> hold to talk (Crew Talk voice) &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>F</kbd> fullscreen this window &nbsp; <kbd>&larr;</kbd><kbd>&rarr;</kbd> previous/next cue &nbsp;
     Drag the Extended Display window onto your second screen, then press <kbd>F11</kbd> for true full screen.
     <div class="footer-about"><kbd>1</kbd>-<kbd>5</kbd> message presets (5 MIN/PLACES/STANDBY/GO/HOLD) &nbsp; <kbd>6</kbd> clear message &nbsp; <kbd>7</kbd> flash toggle &nbsp; <kbd>8</kbd> open extended display &nbsp; <kbd>9</kbd> test alarm &nbsp; <kbd>0</kbd> save show &mdash; handy if you're driving this from a Stream Deck or other macro pad: map each button to the matching key with its plain "Hotkey" action, no plugin needed. Just make sure this browser tab is the focused window when a button is pressed.</div>
     <div class="footer-about">Stage Manager Countdown Timer &mdash; built for Stage Effects Group (Pty) Ltd. Runs entirely offline in this browser tab.</div>
@@ -3568,14 +3568,14 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   document.addEventListener('keydown', function(e){
     var tag = (e.target && e.target.tagName) || '';
     if(tag === 'INPUT' || tag === 'TEXTAREA') return;
-    if(e.code === 'Space'){
+    if(e.code === 'Space'){ e.preventDefault(); running ? pauseTimer() : startTimer(); }
+    // "T" is push-to-talk on this side (Space is already the timer start/pause
+    // shortcut, so it stays reserved for that here — unlike the Crew page,
+    // which has no such conflict and uses Space for push-to-talk).
+    else if((e.key === 't' || e.key === 'T') && voiceJoined && !alwaysOnVoice && !el.voiceTalkBtn.disabled){
       e.preventDefault();
       if(e.repeat) return;
-      // While joined to Crew Talk voice (and not on hands-free Always On),
-      // the spacebar becomes push-to-talk instead of the timer shortcut —
-      // matches holding down the Talk button.
-      if(voiceJoined && !alwaysOnVoice && !el.voiceTalkBtn.disabled){ setTransmitting(true); }
-      else { running ? pauseTimer() : startTimer(); }
+      setTransmitting(true);
     }
     else if(e.key === 'r' || e.key === 'R'){ resetTimer(); }
     else if(e.key === 'f' || e.key === 'F'){
@@ -3611,7 +3611,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   });
 
   document.addEventListener('keyup', function(e){
-    if(e.code !== 'Space') return;
+    if(e.key !== 't' && e.key !== 'T') return;
     var tag = (e.target && e.target.tagName) || '';
     if(tag === 'INPUT' || tag === 'TEXTAREA') return;
     if(voiceJoined && !alwaysOnVoice){ setTransmitting(false); }
