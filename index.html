@@ -1152,7 +1152,7 @@
         el.messageSubTime.classList.remove('warn','danger');
         if(!isFreeRunUp()){
           if(remaining <= 0){ el.messageSubTime.classList.add('danger'); }
-          else if(remaining <= 60){ el.messageSubTime.classList.add('warn'); }
+          else if(remaining <= (lastPayload.warnAt || 60)){ el.messageSubTime.classList.add('warn'); }
         }
         el.messageSubTime.textContent = fmt(displaySeconds(remaining));
         fitOverflow(el.messageSubTime, 0.14);
@@ -1208,7 +1208,7 @@
     } else {
       el.stage.classList.remove('alarm');
       el.overrunTag.classList.remove('show');
-      if(remaining <= 60) el.countdown.classList.add('warn');
+      if(remaining <= (lastPayload.warnAt || 60)) el.countdown.classList.add('warn');
       el.countdown.textContent = fmt(remaining);
     }
     fitOverflow(el.countdown, hasCurrent ? 0.46 : 0.55);
