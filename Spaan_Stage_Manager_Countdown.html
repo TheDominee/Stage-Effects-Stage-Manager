@@ -160,7 +160,11 @@
   }
   #splashScreen:active .logo-plate{transform:scale(.97);}
   #splashScreen .logo-plate img{height:64px;display:block;}
+  #splashScreen .splash-show-info{text-align:center;margin-top:-6px;}
+  #splashScreen .splash-show-name{font-size:20px;font-weight:700;color:var(--text);letter-spacing:.2px;}
+  #splashScreen .splash-show-meta{font-size:12.5px;color:var(--text-dim);margin-top:3px;}
   #splashScreen .splash-hint{color:var(--text-dim);font-size:13px;letter-spacing:.5px;text-transform:uppercase;font-weight:600;}
+  #splashScreen .splash-actions{display:flex;gap:10px;cursor:default;}
   #splashScreen[hidden]{display:none;}
 
   /* ---------- setup page ---------- */
@@ -467,6 +471,37 @@
     background:rgba(0,0,0,.18);color:inherit;font-size:10px;cursor:pointer;border:none;padding:0;opacity:.75;}
   .voice-mute-btn:hover{opacity:1;background:rgba(217,92,92,.35);}
   .voice-mute-btn.muted-flash{background:#d95c5c;color:#fff;opacity:1;}
+
+  /* ---- Crew Talk groups (talk-to-a-group targeting) ----
+     Lives under Setup rather than on the Show page, so the Show page stays
+     focused on the cue list / timer / Crew Talk / messages while this show
+     is actually running -- groups are something you set up once beforehand,
+     not something you're fiddling with live. Each group card stays compact
+     (name + members) until double-clicked, which reveals a plain dropdown +
+     Add button to add someone -- no drag-and-drop, no separate "select a
+     name, then tap the target" mode to learn. */
+  .voice-groups-list{display:flex;flex-direction:column;gap:8px;margin-top:12px;}
+  .voice-group-card{border:1px solid var(--hairline);background:var(--panel-bg-2);padding:10px;cursor:pointer;}
+  .voice-group-card.expanded{border-color:var(--gold-accent,#FFC94D);}
+  .voice-group-title-row{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+  .voice-group-title{font-size:13px;font-weight:700;flex:1;cursor:text;}
+  .voice-group-members{display:flex;flex-wrap:wrap;gap:5px;min-height:22px;margin-bottom:0;}
+  .voice-group-card.expanded .voice-group-members{margin-bottom:8px;}
+  .voice-group-empty-hint{font-size:11px;color:var(--text-dim);}
+  .voice-groups-empty{font-size:12px;color:var(--text-dim);}
+  .voice-group-dbltap-hint{font-size:10.5px;color:var(--text-dim);opacity:.7;margin-top:6px;font-style:italic;}
+  .voice-group-add-row{display:flex;gap:6px;align-items:center;margin-top:2px;cursor:default;}
+  .voice-group-add-row select{flex:1;min-width:0;background:var(--panel-bg);color:var(--text);
+    border:1px solid var(--hairline);border-radius:0;padding:5px 6px;font-size:12px;cursor:pointer;}
+  .voice-group-add-row select:disabled{opacity:.5;cursor:not-allowed;}
+  .voice-person-chip{display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:0;font-size:12px;
+    background:var(--overlay-hover);color:var(--text);border:1px solid transparent;}
+  .voice-person-chip .vpc-x{flex:none;width:16px;height:16px;line-height:16px;text-align:center;border-radius:50%;
+    background:rgba(0,0,0,.18);color:inherit;font-size:10px;cursor:pointer;border:none;padding:0;opacity:.75;}
+  .voice-person-chip .vpc-x:hover{opacity:1;background:rgba(217,92,92,.35);}
+  .voice-group-del-btn{flex:none;width:20px;height:20px;line-height:20px;text-align:center;border-radius:50%;
+    background:rgba(0,0,0,.18);color:inherit;font-size:12px;cursor:pointer;border:none;padding:0;opacity:.6;}
+  .voice-group-del-btn:hover{opacity:1;background:rgba(217,92,92,.35);}
   .voice-talk-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
   .voice-talk-row{justify-content:center;}
   .voice-talk-btn{flex:none;width:104px;height:104px;border-radius:50%;border:1px solid rgba(255,255,255,.18);padding:0;
@@ -527,7 +562,16 @@
 
   <div id="splashScreen" title="Click to open the show" role="button" tabindex="0" aria-label="Open the show">
     <div class="logo-plate"><img class="brand-logo-img" alt="Stage Effects Group"></div>
+    <div class="splash-show-info">
+      <div class="splash-show-name" id="splashShowName">Untitled Show</div>
+      <div class="splash-show-meta" id="splashShowMeta"></div>
+    </div>
     <div class="splash-hint">Tap the logo to open the show</div>
+    <div class="splash-actions">
+      <button class="btn gold" id="splashOpenBtn" type="button">Open Show</button>
+      <button class="btn small ghost" id="splashLoadBtn" type="button">&#128194; Load Show</button>
+      <button class="btn small ghost" id="splashNewBtn" type="button">&#128203; New Show</button>
+    </div>
   </div>
 
   <div id="showPage" hidden>
@@ -595,7 +639,7 @@
       <div class="cue-total" id="cueTotal"></div>
 
       <div class="crew-talk-box">
-        <h3>Crew Talk <span class="bc-hint">(live voice with your Crew broadcast link &mdash; needs Broadcasting + the advanced Firebase setup; best on the same WiFi as your crew; hold the "T" key to talk)</span></h3>
+        <h3>Crew Talk <span class="bc-hint">(live voice with your Crew broadcast link &mdash; needs Broadcasting + the advanced Firebase setup; best on the same WiFi as your crew; hold the "T" key to talk; manage Talk Groups under Setup)</span></h3>
         <div class="crew-talk-body">
           <button class="btn small gold" id="voiceJoinBtn">&#127908; Join Voice</button>
           <div class="crew-talk-controls" id="voiceControls" hidden>
@@ -776,6 +820,17 @@
         <label class="bc-adv-check" style="display:block;margin-top:12px;"><input type="checkbox" id="tcBroadcastStart" checked> Keep it in sync with Start / Pause / Reset, and jump to each cue's own linked timecode <span class="bc-optional">(only works while the Timecode Generator page is also open in another tab of this same browser)</span></label>
       </section>
 
+      <section class="panel" id="setupTimecodePanel">
+        <h2>Timecode Generator (LTC) <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-dim);font-size:11px;">(experimental &mdash; runs as its own page)</span></h2>
+        <div class="bc-status">Runs as a separate page so it can keep going on its own and target a dedicated output on a multi-output sound card. <a href="Stage_Effects_Timecode_Generator.html" target="_blank" rel="noopener">Open Timecode Generator&nbsp;&#8599;</a></div>
+      </section>
+
+      <section class="panel" id="setupTalkGroupsPanel">
+        <h2>Talk Groups <button class="btn small ghost" id="voiceGroupsNewBtn" type="button" style="text-transform:none;letter-spacing:0;font-weight:600;">+ New Group</button></h2>
+        <div class="bc-status">Named groups for Crew Talk (e.g. Lighting, Sound, Camera) &mdash; shared live with everyone on this broadcast. Double-click a group to add names to it. Pick one as your talk target back on the Show page to speak to just that group.</div>
+        <div class="voice-groups-list" id="voiceGroupsList"></div>
+      </section>
+
       <section class="panel" id="setupDisplayPanel">
         <h2>Display Output (Extended Display)</h2>
         <div class="presenter-theme-row" style="margin-left:0;">
@@ -862,6 +917,51 @@
             </label>
           </div>
         </details>
+
+        <details class="bc-advanced bc-local">
+          <summary>Local Network Broadcast <span class="bc-optional">(no internet needed &mdash; only reaches people on this venue's Wi-Fi, runs alongside the link above)</span></summary>
+          <div class="bc-row">
+            <label>Local server address <span class="bc-optional">(run the Local Broadcast Server on this computer &mdash; it prints this address on screen)</span>
+              <input type="text" id="bcLocalUrl" placeholder="http://192.168.1.50:8765" spellcheck="false">
+            </label>
+          </div>
+          <div class="bc-adv-toggle-row">
+            <label class="bc-adv-check"><input type="checkbox" id="bcLocalToggle"> Also broadcast to the local network <span class="bc-optional">(sends alongside the broadcast above whenever Start Broadcasting is on &mdash; works even if the internet drops)</span></label>
+          </div>
+          <div class="bc-status" id="bcLocalStatusText" hidden></div>
+          <div class="bc-actions">
+            <button class="btn small ghost" id="bcCopyLocalViewerLinkBtn">Copy Local Viewer Link</button>
+            <button class="btn small ghost" id="bcQrLocalViewerBtn" title="Show a scannable QR code for the local Viewer link">QR</button>
+            <button class="btn small ghost" id="bcCopyLocalCrewLinkBtn">Copy Local Crew Link</button>
+            <button class="btn small ghost" id="bcQrLocalCrewBtn" title="Show a scannable QR code for the local Crew link">QR</button>
+          </div>
+          <div class="bc-qr-row" id="bcQrLocalRow" hidden>
+            <div class="bc-qr-box" id="bcQrLocalViewerBox" hidden>
+              <div class="bc-qr-code" id="bcQrLocalViewerCode"></div>
+              <div class="bc-qr-label">Scan for Viewer (local)</div>
+            </div>
+            <div class="bc-qr-box" id="bcQrLocalCrewBox" hidden>
+              <div class="bc-qr-code" id="bcQrLocalCrewCode"></div>
+              <div class="bc-qr-label">Scan for Crew (local)</div>
+            </div>
+          </div>
+          <div class="bc-link-row" id="bcLocalViewerLinkRow" hidden>
+            <label>Local Viewer link <span class="bc-optional">(click the box to select it, or use Copy)</span>
+              <div class="bc-link-copy">
+                <input type="text" id="bcLocalViewerLinkDisplay" readonly spellcheck="false" aria-label="Local viewer link">
+                <button class="btn small ghost" id="bcLocalViewerLinkDisplayCopyBtn">Copy</button>
+              </div>
+            </label>
+          </div>
+          <div class="bc-link-row" id="bcLocalCrewLinkRow" hidden>
+            <label>Local Crew link <span class="bc-optional">(click the box to select it, or use Copy)</span>
+              <div class="bc-link-copy">
+                <input type="text" id="bcLocalCrewLinkDisplay" readonly spellcheck="false" aria-label="Local crew link">
+                <button class="btn small ghost" id="bcLocalCrewLinkDisplayCopyBtn">Copy</button>
+              </div>
+            </label>
+          </div>
+        </details>
         </div>
       </section>
     </main>
@@ -931,6 +1031,11 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   /* ---------------- element refs ---------------- */
   var el = {
     splashScreen: document.getElementById('splashScreen'),
+    splashShowName: document.getElementById('splashShowName'),
+    splashShowMeta: document.getElementById('splashShowMeta'),
+    splashOpenBtn: document.getElementById('splashOpenBtn'),
+    splashLoadBtn: document.getElementById('splashLoadBtn'),
+    splashNewBtn: document.getElementById('splashNewBtn'),
     showPage: document.getElementById('showPage'),
     setupPage: document.getElementById('setupPage'),
     openSetupBtn: document.getElementById('openSetupBtn'),
@@ -1015,6 +1120,24 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     bcCrewLinkRow: document.getElementById('bcCrewLinkRow'),
     bcCrewLinkDisplay: document.getElementById('bcCrewLinkDisplay'),
     bcCrewLinkDisplayCopyBtn: document.getElementById('bcCrewLinkDisplayCopyBtn'),
+    bcLocalUrl: document.getElementById('bcLocalUrl'),
+    bcLocalToggle: document.getElementById('bcLocalToggle'),
+    bcLocalStatusText: document.getElementById('bcLocalStatusText'),
+    bcCopyLocalViewerLinkBtn: document.getElementById('bcCopyLocalViewerLinkBtn'),
+    bcQrLocalViewerBtn: document.getElementById('bcQrLocalViewerBtn'),
+    bcCopyLocalCrewLinkBtn: document.getElementById('bcCopyLocalCrewLinkBtn'),
+    bcQrLocalCrewBtn: document.getElementById('bcQrLocalCrewBtn'),
+    bcQrLocalRow: document.getElementById('bcQrLocalRow'),
+    bcQrLocalViewerBox: document.getElementById('bcQrLocalViewerBox'),
+    bcQrLocalViewerCode: document.getElementById('bcQrLocalViewerCode'),
+    bcQrLocalCrewBox: document.getElementById('bcQrLocalCrewBox'),
+    bcQrLocalCrewCode: document.getElementById('bcQrLocalCrewCode'),
+    bcLocalViewerLinkRow: document.getElementById('bcLocalViewerLinkRow'),
+    bcLocalViewerLinkDisplay: document.getElementById('bcLocalViewerLinkDisplay'),
+    bcLocalViewerLinkDisplayCopyBtn: document.getElementById('bcLocalViewerLinkDisplayCopyBtn'),
+    bcLocalCrewLinkRow: document.getElementById('bcLocalCrewLinkRow'),
+    bcLocalCrewLinkDisplay: document.getElementById('bcLocalCrewLinkDisplay'),
+    bcLocalCrewLinkDisplayCopyBtn: document.getElementById('bcLocalCrewLinkDisplayCopyBtn'),
     bcStatusText: document.getElementById('bcStatusText'),
     bcViewerCount: document.getElementById('bcViewerCount'),
     tcBroadcastStart: document.getElementById('tcBroadcastStart'),
@@ -1027,6 +1150,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     voiceJoinBtn: document.getElementById('voiceJoinBtn'),
     voiceControls: document.getElementById('voiceControls'),
     voiceTargetRow: document.getElementById('voiceTargetRow'),
+    voiceGroupsNewBtn: document.getElementById('voiceGroupsNewBtn'),
+    voiceGroupsList: document.getElementById('voiceGroupsList'),
     voiceTalkBtn: document.getElementById('voiceTalkBtn'),
     voiceLockBtn: document.getElementById('voiceLockBtn'),
     voiceLeaveBtn: document.getElementById('voiceLeaveBtn'),
@@ -1058,6 +1183,19 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   }
   syncShowNameDisplay();
   el.showName.addEventListener('input', syncShowNameDisplay);
+
+  // The Home/splash screen shows what you're about to open (the show as it
+  // was last saved on this computer) before you commit to opening it --
+  // just a one-time render at load, since the splash only appears once
+  // before that state can change.
+  function syncSplashInfo(){
+    el.splashShowName.textContent = el.showName.value || 'Untitled Show';
+    var bits = [];
+    if(el.showVenue.value) bits.push(el.showVenue.value);
+    bits.push(cueList.length === 1 ? '1 cue' : (cueList.length + ' cues'));
+    el.splashShowMeta.textContent = bits.join(' · ');
+  }
+  syncSplashInfo();
 
   /* ---------------- broadcast (public link) ----------------
      Two backends:
@@ -1096,7 +1234,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       roomId: randomRoomId(),
       viewerUrl: 'https://restless-king-1b9a.jhfdebruin.workers.dev',
       crewViewerUrl: '',
-      enabled: false
+      enabled: false,
+      localUrl: '',
+      localEnabled: false
     };
     saveJSON('sm_broadcast_settings', bcSettings);
   }
@@ -1105,24 +1245,48 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   // Fills in the Crew page URL for settings saved before this field existed —
   // same one-time migration pattern as the two lines above.
   if(!bcSettings.crewViewerUrl){ bcSettings.crewViewerUrl = ''; }
+  // Same migration for the Local Network Broadcast fields, added later still.
+  if(bcSettings.localUrl == null){ bcSettings.localUrl = ''; }
+  if(bcSettings.localEnabled == null){ bcSettings.localEnabled = false; }
   el.bcDbUrl.value = bcSettings.dbUrl || '';
   el.bcRoomId.value = bcSettings.roomId || randomRoomId();
   el.bcViewerUrl.value = bcSettings.viewerUrl || '';
   el.bcCrewUrl.value = bcSettings.crewViewerUrl || '';
   el.bcAdvToggle.checked = bcSettings.mode === 'advanced';
+  el.bcLocalUrl.value = bcSettings.localUrl || '';
+  el.bcLocalToggle.checked = !!bcSettings.localEnabled;
 
   function saveBcSettings(){
     bcSettings.dbUrl = el.bcDbUrl.value.trim();
     bcSettings.roomId = el.bcRoomId.value.trim() || randomRoomId();
     bcSettings.viewerUrl = el.bcViewerUrl.value.trim();
     bcSettings.crewViewerUrl = el.bcCrewUrl.value.trim();
+    bcSettings.localUrl = el.bcLocalUrl.value.trim();
+    bcSettings.localEnabled = el.bcLocalToggle.checked;
     saveJSON('sm_broadcast_settings', bcSettings);
     updateLinkDisplay();
+    updateLocalStatusVisibility();
   }
   el.bcDbUrl.addEventListener('change', saveBcSettings);
   el.bcRoomId.addEventListener('change', saveBcSettings);
   el.bcViewerUrl.addEventListener('change', saveBcSettings);
   el.bcCrewUrl.addEventListener('change', saveBcSettings);
+  el.bcLocalUrl.addEventListener('change', saveBcSettings);
+  el.bcLocalToggle.addEventListener('change', saveBcSettings);
+
+  // Small status line under the Local Network Broadcast toggle — only shown
+  // once it's actually turned on, so it doesn't clutter the panel otherwise.
+  function updateLocalStatusVisibility(){
+    if(!bcSettings.localEnabled || !bcSettings.localUrl){
+      el.bcLocalStatusText.hidden = true;
+      return;
+    }
+    el.bcLocalStatusText.hidden = false;
+    if(!el.bcLocalStatusText.textContent){
+      el.bcLocalStatusText.textContent = bcSettings.enabled ? 'Waiting for first local update…' : 'Will start once Start Broadcasting is on.';
+    }
+  }
+  updateLocalStatusVisibility();
 
   function setAdvFieldsUI(){
     el.bcAdvFields.hidden = bcSettings.mode !== 'advanced';
@@ -1146,8 +1310,11 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         ? 'Not broadcasting'
         : 'Not broadcasting — no account needed, a broadcast room is created automatically when you start.';
       el.bcStatusText.classList.remove('bc-live','bc-error');
+      el.bcLocalStatusText.textContent = '';
+      el.bcLocalStatusText.classList.remove('bc-live','bc-error');
     }
     updateLinkDisplay();
+    updateLocalStatusVisibility();
     if(typeof setCrewChatUI === 'function') setCrewChatUI();
     if(typeof pollCrewChat === 'function') pollCrewChat();
   }
@@ -1178,6 +1345,16 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       return bcSettings.dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(bcSettings.roomId) + '.json';
     }
     return bcSettings.blobUrl || '';
+  }
+
+  // Local Network Broadcast target — always the same "advanced"-style
+  // Firebase-REST-shaped path, since the Local Broadcast Server speaks that
+  // same tiny protocol regardless of which backend the internet broadcast
+  // above is using. Reuses the same Room ID as the internet broadcast so
+  // both sides always describe the same show.
+  function localTargetUrl(){
+    if(!bcSettings.localEnabled || !bcSettings.localUrl || !bcSettings.roomId) return '';
+    return bcSettings.localUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(bcSettings.roomId) + '.json';
   }
 
   el.bcToggleBtn.addEventListener('click', function(){
@@ -1250,6 +1427,21 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     return base + '?blob=' + encodeURIComponent(bcSettings.blobUrl);
   }
 
+  // Local Network Broadcast links — the Local Broadcast Server serves the
+  // Viewer/Crew pages itself at its own address, so unlike the internet
+  // links above there's no separately-hosted page to point at: the address
+  // typed into "Local server address" is both the API and the page host.
+  function buildLocalViewerLink(){
+    if(!bcSettings.localUrl || !bcSettings.roomId) return null;
+    var base = bcSettings.localUrl.replace(/\/+$/,'');
+    return base + '/Stage_Effects_Viewer.html?db=' + encodeURIComponent(base) + '&room=' + encodeURIComponent(bcSettings.roomId);
+  }
+  function buildLocalCrewLink(){
+    if(!bcSettings.localUrl || !bcSettings.roomId) return null;
+    var base = bcSettings.localUrl.replace(/\/+$/,'');
+    return base + '/Stage_Effects_Crew.html?db=' + encodeURIComponent(base) + '&room=' + encodeURIComponent(bcSettings.roomId);
+  }
+
   // Keeps the visible, click-to-select link box in sync with whatever this
   // computer's current broadcast room is — this is what makes it quick to grab
   // and share the *right* link when several computers are each broadcasting
@@ -1281,11 +1473,40 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       if(crewLink) renderQrInto(el.bcQrCrewCode, crewLink);
       else { el.bcQrCrewBox.hidden = true; el.bcQrRow.hidden = el.bcQrViewerBox.hidden; }
     }
+
+    var localLink = buildLocalViewerLink();
+    if(localLink){
+      el.bcLocalViewerLinkRow.hidden = false;
+      el.bcLocalViewerLinkDisplay.value = localLink;
+    } else {
+      el.bcLocalViewerLinkRow.hidden = true;
+      el.bcLocalViewerLinkDisplay.value = '';
+    }
+    var localCrewLink = buildLocalCrewLink();
+    if(localCrewLink){
+      el.bcLocalCrewLinkRow.hidden = false;
+      el.bcLocalCrewLinkDisplay.value = localCrewLink;
+    } else {
+      el.bcLocalCrewLinkRow.hidden = true;
+      el.bcLocalCrewLinkDisplay.value = '';
+    }
+    if(el.bcQrLocalViewerBox && !el.bcQrLocalViewerBox.hidden){
+      if(localLink) renderQrInto(el.bcQrLocalViewerCode, localLink);
+      else { el.bcQrLocalViewerBox.hidden = true; el.bcQrLocalRow.hidden = el.bcQrLocalCrewBox.hidden; }
+    }
+    if(el.bcQrLocalCrewBox && !el.bcQrLocalCrewBox.hidden){
+      if(localCrewLink) renderQrInto(el.bcQrLocalCrewCode, localCrewLink);
+      else { el.bcQrLocalCrewBox.hidden = true; el.bcQrLocalRow.hidden = el.bcQrLocalViewerBox.hidden; }
+    }
   }
   el.bcLinkDisplay.addEventListener('click', function(){ el.bcLinkDisplay.select(); });
   el.bcLinkDisplay.addEventListener('focus', function(){ el.bcLinkDisplay.select(); });
   el.bcCrewLinkDisplay.addEventListener('click', function(){ el.bcCrewLinkDisplay.select(); });
   el.bcCrewLinkDisplay.addEventListener('focus', function(){ el.bcCrewLinkDisplay.select(); });
+  el.bcLocalViewerLinkDisplay.addEventListener('click', function(){ el.bcLocalViewerLinkDisplay.select(); });
+  el.bcLocalViewerLinkDisplay.addEventListener('focus', function(){ el.bcLocalViewerLinkDisplay.select(); });
+  el.bcLocalCrewLinkDisplay.addEventListener('click', function(){ el.bcLocalCrewLinkDisplay.select(); });
+  el.bcLocalCrewLinkDisplay.addEventListener('focus', function(){ el.bcLocalCrewLinkDisplay.select(); });
 
   function copyToClipboard(text, btnEl){
     var copied = false;
@@ -1357,6 +1578,25 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   }
   el.bcCopyCrewLinkBtn.addEventListener('click', function(){ copyCrewLink(el.bcCopyCrewLinkBtn); });
   el.bcCrewLinkDisplayCopyBtn.addEventListener('click', function(){ copyCrewLink(el.bcCrewLinkDisplayCopyBtn); });
+
+  // Local Network Broadcast copy handlers — simpler than the internet ones
+  // above, since there's no "auto"/jsonblob provisioning step to wait on;
+  // the link either builds (address + room filled in) or it doesn't.
+  function copyLocalLink(kind, btnEl){
+    saveBcSettings();
+    if(!bcSettings.localUrl){
+      alert('Fill in the Local server address first (run the Local Broadcast Server on this computer, then enter the address it prints).');
+      return;
+    }
+    var link = kind === 'viewer' ? buildLocalViewerLink() : buildLocalCrewLink();
+    if(!link){ alert('Fill in the Local server address first.'); return; }
+    updateLinkDisplay();
+    copyToClipboard(link, btnEl);
+  }
+  el.bcCopyLocalViewerLinkBtn.addEventListener('click', function(){ copyLocalLink('viewer', el.bcCopyLocalViewerLinkBtn); });
+  el.bcLocalViewerLinkDisplayCopyBtn.addEventListener('click', function(){ copyLocalLink('viewer', el.bcLocalViewerLinkDisplayCopyBtn); });
+  el.bcCopyLocalCrewLinkBtn.addEventListener('click', function(){ copyLocalLink('crew', el.bcCopyLocalCrewLinkBtn); });
+  el.bcLocalCrewLinkDisplayCopyBtn.addEventListener('click', function(){ copyLocalLink('crew', el.bcLocalCrewLinkDisplayCopyBtn); });
 
   /* ---------------- QR codes for the broadcast links ----------------
      Renders a scannable QR code for the Viewer/Crew link directly on the
@@ -1433,6 +1673,36 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   }
   el.bcQrViewerBtn.addEventListener('click', function(){ showQr('viewer'); });
   el.bcQrCrewBtn.addEventListener('click', function(){ showQr('crew'); });
+
+  // kind: 'viewer' or 'crew' — same toggle pattern as showQr() above, just
+  // against the Local Network Broadcast link/address instead.
+  function showLocalQr(kind){
+    var isViewer = kind === 'viewer';
+    var box = isViewer ? el.bcQrLocalViewerBox : el.bcQrLocalCrewBox;
+    var otherBox = isViewer ? el.bcQrLocalCrewBox : el.bcQrLocalViewerBox;
+    var codeEl = isViewer ? el.bcQrLocalViewerCode : el.bcQrLocalCrewCode;
+    var buildLink = isViewer ? buildLocalViewerLink : buildLocalCrewLink;
+
+    if(!box.hidden){
+      box.hidden = true;
+      el.bcQrLocalRow.hidden = el.bcQrLocalViewerBox.hidden && el.bcQrLocalCrewBox.hidden;
+      return;
+    }
+    saveBcSettings();
+    if(!bcSettings.localUrl){
+      alert('Fill in the Local server address first (run the Local Broadcast Server on this computer, then enter the address it prints).');
+      return;
+    }
+    var link = buildLink();
+    if(!link){ alert('Fill in the Local server address first.'); return; }
+    updateLinkDisplay();
+    renderQrInto(codeEl, link);
+    otherBox.hidden = true;
+    box.hidden = false;
+    el.bcQrLocalRow.hidden = false;
+  }
+  el.bcQrLocalViewerBtn.addEventListener('click', function(){ showLocalQr('viewer'); });
+  el.bcQrLocalCrewBtn.addEventListener('click', function(){ showLocalQr('crew'); });
 
   setBroadcastUI();
   updateLinkDisplay();
@@ -1534,6 +1804,34 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       el.bcStatusText.classList.add('bc-error');
       el.bcStatusText.classList.remove('bc-live');
     });
+
+    // Local Network Broadcast — a second, independent write to a server
+    // running on this same computer, so crew on the venue Wi-Fi still get
+    // live updates even if the internet connection above is slow, saturated
+    // by the crowd, or down entirely. Runs alongside the write above
+    // whenever it's turned on; its success or failure never affects the
+    // internet broadcast, and vice versa. Always PATCH, same reasoning as
+    // "advanced" mode above — the local server keeps the same shallow-merge
+    // semantics so crew heartbeats/chat aren't clobbered either.
+    var localUrl = localTargetUrl();
+    if(localUrl){
+      fetch(localUrl, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(function(r){
+        if(!r.ok) throw new Error('HTTP ' + r.status);
+        el.bcLocalStatusText.hidden = false;
+        el.bcLocalStatusText.textContent = 'Local broadcast ✓ last update ' + fmtClock(new Date());
+        el.bcLocalStatusText.classList.add('bc-live');
+        el.bcLocalStatusText.classList.remove('bc-error');
+      }).catch(function(err){
+        el.bcLocalStatusText.hidden = false;
+        el.bcLocalStatusText.textContent = 'Local broadcast error: ' + err.message + ' — is the Local Broadcast Server running on this computer?';
+        el.bcLocalStatusText.classList.add('bc-error');
+        el.bcLocalStatusText.classList.remove('bc-live');
+      });
+    }
   }
   setInterval(broadcastState, 1000);
 
@@ -1859,6 +2157,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   setInterval(pollCrewChat, 3000);
   pollCrewChat();
 
+  setInterval(pollVoiceGroups, 4000);
+  pollVoiceGroups();
+
   /* ---------------- crew talk (live voice) ----------------
      A WebRTC mesh: this control panel opens one direct peer-to-peer audio
      connection to every crew device that's joined voice, and vice versa, so
@@ -1877,7 +2178,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   var voiceJoined = false;
   var transmitting = false;
   var talkLocked = false; // hands-free: click the lock button, or hold Push To Talk and swipe, to keep talking without holding — same as the Crew page
-  var talkTarget = 'everyone'; // 'everyone' or a peerId
+  var talkTarget = 'everyone'; // 'everyone', a peerId, or 'group:<groupId>'
   var localVoiceStream = null;
   var localVoiceTrack = null;
   var voicePeers = {}; // peerId -> { pc, name, state, seenCandidates:{}, answered:false, lastOfferTs:0, audioEl, analyser, speaking }
@@ -1943,11 +2244,24 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
   function applyVoiceRouting(){
     if(localVoiceTrack) localVoiceTrack.enabled = transmitting;
+    // Group targets route by the peer's NAME (matched against the group's
+    // member list), not their peerId — peerId is regenerated every reload,
+    // but the name a crew member types in is stable, so that's what group
+    // membership is keyed by.
+    var groupMembers = null;
+    if(talkTarget.indexOf('group:') === 0){
+      var g = voiceGroups[talkTarget.slice(6)];
+      groupMembers = g && g.members ? g.members : [];
+    }
     Object.keys(voicePeers).forEach(function(peerId){
       var entry = voicePeers[peerId];
       var sender = findAudioSender(entry.pc);
       if(!sender) return;
-      var shouldSend = transmitting && (talkTarget === 'everyone' || talkTarget === peerId);
+      var shouldSend = transmitting && (
+        talkTarget === 'everyone' ||
+        talkTarget === peerId ||
+        (groupMembers && groupMembers.indexOf(entry.name) !== -1)
+      );
       var wantTrack = shouldSend ? localVoiceTrack : null;
       if(sender.track !== wantTrack){
         sender.replaceTrack(wantTrack || null).catch(function(){});
@@ -2064,8 +2378,244 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     }).catch(function(){});
   }
 
+  // ===== SYNC BLOCK START: voiceGroups =====
+  // Named "Talk Groups" (e.g. Lighting, Sound, Camera) that Stage Manager and
+  // any crew member can create and edit, shared via the same broadcast room
+  // (broadcasts/<room>/voiceGroups.json) so everyone sees the same groups.
+  // Membership is keyed by the crew member's NAME rather than their peerId,
+  // since peerId is regenerated every page reload while the name they type
+  // in is the only stable identity across reloads. This is a plain
+  // last-write-wins document (like the rest of the broadcast payload) rather
+  // than the per-child pattern Crew Chat uses, since group edits are
+  // infrequent and simple to redo if two edits ever race.
+  var voiceGroups = {}; // groupId -> { name, members: [name, ...], createdAt }
+  var voiceGroupsOrder = []; // groupId order, oldest first
+  var voiceGroupsExpanded = {}; // groupId -> true while its "add names" row is open (double-click a group to toggle)
+  var voiceGroupsGen = 0; // bumped on every local edit, so a slow/in-flight poll response can't clobber a newer local change
+
+  function voiceGroupsUrl(){
+    if(bcSettings.mode !== 'advanced' || !bcSettings.dbUrl || !bcSettings.roomId) return '';
+    return bcSettings.dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(bcSettings.roomId) + '/voiceGroups.json';
+  }
+  function genGroupId(){
+    return 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+  }
+  function pollVoiceGroups(){
+    var url = voiceGroupsUrl();
+    if(!url || !bcSettings.enabled) return;
+    var genAtRequest = voiceGroupsGen;
+    fetch(url, { cache: 'no-store' }).then(function(r){
+      if(!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function(data){
+      if(genAtRequest !== voiceGroupsGen) return; // a local edit happened while this was in flight -- our copy is newer, don't overwrite it
+      voiceGroups = data || {};
+      voiceGroupsOrder = Object.keys(voiceGroups).sort(function(a,b){
+        return (voiceGroups[a].createdAt||0) - (voiceGroups[b].createdAt||0);
+      });
+      renderVoiceGroups();
+      renderVoiceTargets();
+    }).catch(function(){ /* keep last-known groups showing, try again next poll */ });
+  }
+  function saveVoiceGroups(){
+    voiceGroupsGen++;
+    var url = voiceGroupsUrl();
+    if(!url) return;
+    fetch(url, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(voiceGroups) }).catch(function(){});
+    renderVoiceGroups();
+    renderVoiceTargets();
+  }
+  function createVoiceGroup(){
+    var name = prompt('Name this Talk Group (e.g. Lighting, Sound, Camera):');
+    if(name == null) return;
+    name = name.trim().slice(0,40);
+    if(!name) return;
+    var id = genGroupId();
+    voiceGroups[id] = { name: name, members: [], createdAt: Date.now() };
+    voiceGroupsOrder.push(id);
+    voiceGroupsExpanded[id] = true; // open straight to "add names" for a brand new group
+    saveVoiceGroups();
+  }
+  function renameVoiceGroup(id){
+    var g = voiceGroups[id];
+    if(!g) return;
+    var name = prompt('Rename this Talk Group:', g.name);
+    if(name == null) return;
+    name = name.trim().slice(0,40);
+    if(!name) return;
+    g.name = name;
+    saveVoiceGroups();
+  }
+  function deleteVoiceGroup(id){
+    var g = voiceGroups[id];
+    if(!g) return;
+    if(!confirm('Delete the "' + g.name + '" Talk Group? This does not remove anyone from voice, it just deletes the group.')) return;
+    delete voiceGroups[id];
+    voiceGroupsOrder = voiceGroupsOrder.filter(function(x){ return x !== id; });
+    if(talkTarget === 'group:' + id){ talkTarget = 'everyone'; applyVoiceRouting(); }
+    saveVoiceGroups();
+  }
+  function addPersonToGroup(groupId, personName){
+    var g = voiceGroups[groupId];
+    if(!g || !personName) return;
+    if(!g.members) g.members = [];
+    if(g.members.indexOf(personName) === -1){
+      g.members.push(personName);
+      saveVoiceGroups();
+      if(talkTarget === 'group:' + groupId) applyVoiceRouting();
+    }
+  }
+  function removePersonFromGroup(groupId, personName){
+    var g = voiceGroups[groupId];
+    if(!g || !g.members) return;
+    var i = g.members.indexOf(personName);
+    if(i === -1) return;
+    g.members.splice(i, 1);
+    saveVoiceGroups();
+    if(talkTarget === 'group:' + groupId) applyVoiceRouting();
+  }
+  // Plain dropdown + Add button per group, rather than drag-and-drop: works
+  // identically with a mouse or a finger, with no separate "select a name,
+  // then tap the group" mode to learn.
+  function wireGroupAddControl(select, addBtn, groupId){
+    function doAdd(){
+      var name = select.value;
+      if(!name) return;
+      addPersonToGroup(groupId, name);
+    }
+    addBtn.addEventListener('click', doAdd);
+    select.addEventListener('change', function(){
+      // On a touch device picking from the <select> is itself the whole
+      // gesture -- add immediately rather than waiting for a second tap on
+      // the Add button.
+      if(select.value) doAdd();
+    });
+  }
+  function renderVoiceGroups(){
+    if(!el.voiceGroupsList) return;
+    el.voiceGroupsList.innerHTML = '';
+    if(!voiceGroupsOrder.length){
+      var empty = document.createElement('div');
+      empty.className = 'voice-groups-empty';
+      empty.textContent = 'No Talk Groups yet — click "+ New Group" above to create one.';
+      el.voiceGroupsList.appendChild(empty);
+    }
+    // Everyone with an active heartbeat, plus anyone already in a group even
+    // if their heartbeat has since expired, so an offline person can still
+    // be removed (they just can't be freshly added until they reconnect).
+    var allNames = crewRoster.slice();
+    voiceGroupsOrder.forEach(function(id){
+      (voiceGroups[id].members||[]).forEach(function(n){ if(allNames.indexOf(n) === -1) allNames.push(n); });
+    });
+    voiceGroupsOrder.forEach(function(id){
+      var g = voiceGroups[id];
+      if(!g) return;
+      var members = g.members || [];
+      var expanded = !!voiceGroupsExpanded[id];
+      var card = document.createElement('div');
+      card.className = 'voice-group-card' + (expanded ? ' expanded' : '');
+      card.title = expanded ? 'Double-click to collapse' : 'Double-click to add names';
+      card.addEventListener('dblclick', function(ev){
+        if(ev.target.closest('.voice-group-del-btn') || ev.target.closest('.voice-person-chip') || ev.target.closest('.voice-group-title') || ev.target.closest('select') || ev.target.closest('button')) return;
+        voiceGroupsExpanded[id] = !voiceGroupsExpanded[id];
+        renderVoiceGroups();
+      });
+      var titleRow = document.createElement('div');
+      titleRow.className = 'voice-group-title-row';
+      var title = document.createElement('span');
+      title.className = 'voice-group-title';
+      title.textContent = g.name + ' (' + members.length + ')';
+      title.title = 'Click to rename';
+      title.addEventListener('click', function(){ renameVoiceGroup(id); });
+      titleRow.appendChild(title);
+      var delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'voice-group-del-btn';
+      delBtn.textContent = '×';
+      delBtn.title = 'Delete this Talk Group';
+      delBtn.addEventListener('click', function(){ deleteVoiceGroup(id); });
+      titleRow.appendChild(delBtn);
+      card.appendChild(titleRow);
+      var membersWrap = document.createElement('div');
+      membersWrap.className = 'voice-group-members';
+      if(!members.length){
+        var hint = document.createElement('span');
+        hint.className = 'voice-group-empty-hint';
+        hint.textContent = 'No one in this group yet.';
+        membersWrap.appendChild(hint);
+      } else {
+        members.forEach(function(name){
+          var chip = document.createElement('span');
+          chip.className = 'voice-person-chip';
+          chip.textContent = name;
+          var x = document.createElement('span');
+          x.className = 'vpc-x';
+          x.textContent = '×';
+          x.title = 'Remove from group';
+          x.addEventListener('click', function(){ removePersonFromGroup(id, name); });
+          chip.appendChild(x);
+          membersWrap.appendChild(chip);
+        });
+      }
+      card.appendChild(membersWrap);
+      var available = allNames.filter(function(n){ return members.indexOf(n) === -1; });
+      if(expanded){
+        var addRow = document.createElement('div');
+        addRow.className = 'voice-group-add-row';
+        var select = document.createElement('select');
+        if(!available.length){
+          var opt = document.createElement('option');
+          opt.textContent = 'No one else to add';
+          select.appendChild(opt);
+          select.disabled = true;
+        } else {
+          var placeholder = document.createElement('option');
+          placeholder.value = '';
+          placeholder.textContent = 'Add someone…';
+          select.appendChild(placeholder);
+          available.forEach(function(name){
+            var o = document.createElement('option');
+            o.value = name;
+            o.textContent = name;
+            select.appendChild(o);
+          });
+        }
+        addRow.appendChild(select);
+        var addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'btn small ghost';
+        addBtn.textContent = 'Add';
+        addBtn.disabled = !available.length;
+        addRow.appendChild(addBtn);
+        card.appendChild(addRow);
+        wireGroupAddControl(select, addBtn, id);
+      } else {
+        var dblHint = document.createElement('div');
+        dblHint.className = 'voice-group-dbltap-hint';
+        dblHint.textContent = 'Double-click to add names';
+        card.appendChild(dblHint);
+      }
+      el.voiceGroupsList.appendChild(card);
+    });
+  }
+  el.voiceGroupsNewBtn.addEventListener('click', createVoiceGroup);
+  // Clicking anywhere outside a double-click-expanded group card collapses
+  // it back to its compact view -- so an "add names" row you're done with
+  // doesn't just sit open once you've moved on to something else.
+  document.addEventListener('click', function(ev){
+    var anyExpanded = Object.keys(voiceGroupsExpanded).some(function(id){ return voiceGroupsExpanded[id]; });
+    // Exclude "+ New Group" itself -- it just set a brand-new group expanded
+    // on this same click, so this handler firing on the same bubbled event
+    // must not immediately undo that.
+    if(!anyExpanded || ev.target.closest('.voice-group-card') || ev.target.closest('#voiceGroupsNewBtn')) return;
+    voiceGroupsExpanded = {};
+    renderVoiceGroups();
+  });
+  // ===== SYNC BLOCK END: voiceGroups =====
+
   function renderVoiceTargets(){
     var chips = [{ id: 'everyone', name: 'Everyone' }].concat(voiceRoster);
+    var groupChips = voiceGroupsOrder.map(function(id){ return { id: 'group:' + id, name: voiceGroups[id].name, isGroup: true, count: (voiceGroups[id].members||[]).length }; });
     el.voiceTargetRow.innerHTML = '';
     chips.forEach(function(c){
       var chip = document.createElement('div');
@@ -2097,6 +2647,20 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         });
         chip.appendChild(muteBtn);
       }
+      el.voiceTargetRow.appendChild(chip);
+    });
+    groupChips.forEach(function(c){
+      var chip = document.createElement('div');
+      chip.className = 'voice-target-chip voice-target-chip-group' + (talkTarget === c.id ? ' active' : '');
+      var label = document.createElement('span');
+      label.textContent = '👥 ' + c.name + ' (' + c.count + ')';
+      chip.appendChild(label);
+      chip.title = 'Talk to only the ' + c.count + ' people in "' + c.name + '"';
+      chip.addEventListener('click', function(){
+        talkTarget = c.id;
+        applyVoiceRouting();
+        renderVoiceTargets();
+      });
       el.voiceTargetRow.appendChild(chip);
     });
     var live = voiceRoster.filter(function(p){ var e = voicePeers[p.id]; return e && e.state === 'connected'; }).length;
@@ -2299,10 +2863,30 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   function openSetupPage(){
     el.showPage.hidden = true;
     el.setupPage.hidden = false;
+    if(typeof pollVoiceGroups === 'function') pollVoiceGroups();
   }
   el.splashScreen.addEventListener('click', openShowPage);
   el.splashScreen.addEventListener('keydown', function(e){
     if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openShowPage(); }
+  });
+  // Quick actions on the Home screen -- each stops the click from also
+  // bubbling to the splash screen's own "tap anywhere opens the show"
+  // handler above, then does its own thing. Load/New Show reuse the exact
+  // same buttons/logic already on the Show page (just triggered from here)
+  // rather than duplicating that logic.
+  el.splashOpenBtn.addEventListener('click', function(ev){
+    ev.stopPropagation();
+    openShowPage();
+  });
+  el.splashLoadBtn.addEventListener('click', function(ev){
+    ev.stopPropagation();
+    openShowPage();
+    el.loadShowBtn.click();
+  });
+  el.splashNewBtn.addEventListener('click', function(ev){
+    ev.stopPropagation();
+    el.newShowBtn.click(); // asks to confirm, resets state -- a no-op if cancelled
+    openShowPage();
   });
   el.openSetupBtn.addEventListener('click', openSetupPage);
   el.backToShowBtn.addEventListener('click', openShowPage);

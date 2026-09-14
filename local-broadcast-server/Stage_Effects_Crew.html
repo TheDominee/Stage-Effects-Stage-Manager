@@ -256,54 +256,6 @@
     overflow:hidden;text-overflow:ellipsis;}
   #chatMentionDropdown .mention-item.active,#chatMentionDropdown .mention-item:hover{background:var(--gold,#FFC94D);color:#1a1206;}
   #chatMentionDropdown .mention-empty{padding:8px 12px;font-size:12px;color:var(--dim);font-style:italic;}
-
-  /* Talk Groups (e.g. Lighting, Sound, Camera) -- lets a crew member restrict
-     their outgoing voice to just one named group instead of Everyone/one
-     person. Mirrors Crew Chat's own toggle-button + floating-panel pattern,
-     docked to the opposite (right) side so the two panels never collide. */
-  #voiceGroupsToggleBtn{position:fixed;bottom:calc(var(--voicebar-h) + 14px);right:26px;width:46px;height:46px;border-radius:50%;border:1px solid rgba(128,128,128,.3);
-    background:rgba(128,128,128,.12);color:var(--text);font-size:19px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:20;
-    box-shadow:0 3px 0 rgba(0,0,0,.3), 0 4px 8px rgba(0,0,0,.25);
-    transition:transform .06s ease, box-shadow .06s ease, background .15s ease;}
-  #voiceGroupsToggleBtn:hover{background:rgba(128,128,128,.22);}
-  #voiceGroupsToggleBtn:active{transform:translateY(2px);box-shadow:inset 0 1px 4px rgba(0,0,0,.3);}
-  #voiceGroupsToggleBtn.active{background:var(--gold,#FFC94D);color:#1a1206;border-color:transparent;}
-  #voiceGroupsPanel{position:fixed;bottom:calc(var(--voicebar-h) + 72px);right:26px;width:320px;max-width:calc(100vw - 40px);max-height:50vh;
-    background:rgba(10,11,13,.97);border:1px solid rgba(128,128,128,.3);border-radius:0;box-shadow:0 8px 30px rgba(0,0,0,.4);
-    display:none;flex-direction:column;overflow:hidden;z-index:20;}
-  html[data-theme="light"] #voiceGroupsPanel{background:rgba(255,255,255,.98);}
-  #voiceGroupsPanel.open{display:flex;}
-  #voiceGroupsHeader{padding:10px 14px;border-bottom:1px solid rgba(128,128,128,.25);display:flex;align-items:center;justify-content:space-between;gap:8px;
-    font-size:12px;color:var(--dim);font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
-  #voiceGroupsHeader span{flex:1;}
-  #voiceGroupsHeader button{background:none;border:none;color:var(--dim);font-size:16px;cursor:pointer;padding:2px 6px;line-height:1;}
-  #voiceGroupsHeader button:hover{color:var(--gold);}
-  .voice-groups-hint{font-size:11px;color:var(--dim);padding:0 14px 8px;line-height:1.4;}
-  .voice-groups-list{overflow-y:auto;padding:0 14px 10px;display:flex;flex-direction:column;gap:8px;max-height:32vh;}
-  .voice-group-card{border:1px solid rgba(128,128,128,.3);padding:8px 10px;background:rgba(128,128,128,.08);cursor:pointer;}
-  .voice-group-card.expanded{border-color:var(--gold,#FFC94D);}
-  .voice-group-title-row{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;}
-  .voice-group-title{font-size:13px;font-weight:700;color:var(--text);cursor:pointer;}
-  .voice-group-del-btn{background:none;border:none;color:var(--dim);font-size:15px;cursor:pointer;padding:0 4px;line-height:1;}
-  .voice-group-del-btn:hover{color:var(--danger);}
-  .voice-group-members{display:flex;flex-wrap:wrap;gap:5px;min-height:22px;margin-bottom:0;}
-  .voice-group-card.expanded .voice-group-members{margin-bottom:8px;}
-  .voice-group-empty-hint{font-size:11px;color:var(--dim);font-style:italic;}
-  .voice-groups-empty{font-size:12px;color:var(--dim);padding:6px 0;}
-  .voice-group-dbltap-hint{font-size:10.5px;color:var(--dim);opacity:.7;margin-top:6px;font-style:italic;}
-  .voice-group-add-row{display:flex;gap:6px;align-items:center;margin-top:2px;cursor:default;}
-  .voice-group-add-row select{flex:1;min-width:0;background:rgba(128,128,128,.12);color:var(--text);
-    border:1px solid rgba(128,128,128,.3);border-radius:0;padding:5px 6px;font-size:12px;}
-  .voice-group-add-row select:disabled{opacity:.5;}
-  .voice-group-add-row button{background:rgba(128,128,128,.18);color:var(--text);border:1px solid rgba(128,128,128,.3);
-    border-radius:0;padding:5px 10px;font-size:12px;cursor:pointer;}
-  .voice-group-add-row button:disabled{opacity:.5;cursor:not-allowed;}
-  .voice-person-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 8px;font-size:12px;
-    background:rgba(128,128,128,.16);color:var(--text);border-radius:0;white-space:nowrap;}
-  .voice-person-chip .vpc-x{cursor:pointer;opacity:.7;font-weight:700;}
-  .voice-person-chip .vpc-x:hover{opacity:1;color:var(--danger);}
-  .voice-target-chip.voice-target-chip-group{background:rgba(128,128,128,.22);}
-  .voice-target-chip.voice-target-chip-group.active{background:var(--gold,#FFC94D);color:#1a1206;}
 </style>
 </head>
 <body>
@@ -370,17 +322,6 @@
   </div>
 </div>
 
-<button id="voiceGroupsToggleBtn" title="Talk Groups">&#128101;</button>
-<div id="voiceGroupsPanel">
-  <div id="voiceGroupsHeader">
-    <span>Talk Groups</span>
-    <button id="voiceGroupsNewBtn" type="button" title="New group">+ New</button>
-    <button id="voiceGroupsCloseBtn" title="Close">&times;</button>
-  </div>
-  <div class="voice-groups-hint">Shared live with the Stage Manager and everyone else on this broadcast. Double-tap a group to add names to it.</div>
-  <div class="voice-groups-list" id="voiceGroupsList"></div>
-</div>
-
 <script>
 (function(){
   "use strict";
@@ -443,12 +384,7 @@
     voiceTalkBtn: document.getElementById('voiceTalkBtn'),
     voiceLeaveBtn: document.getElementById('voiceLeaveBtn'),
     voiceAudioSinks: document.getElementById('voiceAudioSinks'),
-    voiceBar: document.getElementById('voiceBar'),
-    voiceGroupsToggleBtn: document.getElementById('voiceGroupsToggleBtn'),
-    voiceGroupsPanel: document.getElementById('voiceGroupsPanel'),
-    voiceGroupsNewBtn: document.getElementById('voiceGroupsNewBtn'),
-    voiceGroupsCloseBtn: document.getElementById('voiceGroupsCloseBtn'),
-    voiceGroupsList: document.getElementById('voiceGroupsList')
+    voiceBar: document.getElementById('voiceBar')
   };
 
   // Per-build flag: true only for the Crew broadcast link build — the public
@@ -539,7 +475,6 @@
     el.chatToggleBtn.style.display = writable ? 'flex' : 'none';
     el.chatAttachBtn.disabled = !writable;
     if(el.voiceBar) el.voiceBar.style.display = writable ? 'flex' : 'none';
-    if(el.voiceGroupsToggleBtn) el.voiceGroupsToggleBtn.style.display = writable ? 'flex' : 'none';
     // Only reserve the docked bar's space above the countdown while it's
     // actually shown, so the timer doesn't sit with unused blank space below
     // it before a broadcast link with the advanced Firebase setup connects.
@@ -547,7 +482,6 @@
     if(!writable){
       chatOpen = false;
       el.chatPanel.classList.remove('open');
-      if(el.voiceGroupsPanel) el.voiceGroupsPanel.classList.remove('open');
     }
   }
 
@@ -755,7 +689,6 @@
       otherCrewRoster = roster;
       voiceRoster = vRoster;
       if(typeof onVoiceRosterChange === 'function') onVoiceRosterChange();
-      if(typeof renderVoiceGroups === 'function') renderVoiceGroups();
     }).catch(function(){});
   }
 
@@ -796,8 +729,6 @@
     refreshChatAvailability();
     setInterval(pollCrewRoster, 5000);
     pollCrewRoster();
-    setInterval(pollVoiceGroups, 4000);
-    pollVoiceGroups();
   }
 
   /* ---- crew talk (live voice) ----
@@ -811,7 +742,7 @@
   var voiceJoined = false;
   var transmitting = false;
   var talkLocked = false; // hands-free: click the lock button, or hold Push To Talk and swipe, to keep talking without holding
-  var talkTarget = 'everyone'; // 'everyone', a peerId, or 'group:<groupId>'
+  var talkTarget = 'everyone';
   var localVoiceStream = null;
   var localVoiceTrack = null;
   var voicePeers = {};
@@ -849,23 +780,11 @@
 
   function applyVoiceRouting(){
     if(localVoiceTrack) localVoiceTrack.enabled = transmitting;
-    // Group targets route by the peer's NAME, matched against the group's
-    // member list -- see the matching comment in the Stage Manager panel's
-    // applyVoiceRouting() for why (peerId isn't stable across reloads, name is).
-    var groupMembers = null;
-    if(talkTarget.indexOf('group:') === 0){
-      var g = voiceGroups[talkTarget.slice(6)];
-      groupMembers = g && g.members ? g.members : [];
-    }
     Object.keys(voicePeers).forEach(function(peerId){
       var entry = voicePeers[peerId];
       var sender = findAudioSender(entry.pc);
       if(!sender) return;
-      var shouldSend = transmitting && (
-        talkTarget === 'everyone' ||
-        talkTarget === peerId ||
-        (groupMembers && groupMembers.indexOf(entry.name) !== -1)
-      );
+      var shouldSend = transmitting && (talkTarget === 'everyone' || talkTarget === peerId);
       var wantTrack = shouldSend ? localVoiceTrack : null;
       if(sender.track !== wantTrack) sender.replaceTrack(wantTrack || null).catch(function(){});
     });
@@ -994,260 +913,8 @@
     }).catch(function(){});
   }
 
-  // ===== SYNC BLOCK START: voiceGroups =====
-  // Named "Talk Groups" (e.g. Lighting, Sound, Camera) shared with the Stage
-  // Manager panel and every other crew device via the same broadcast room
-  // (broadcasts/<room>/voiceGroups.json) -- see the matching comment on the
-  // Stage Manager side for the full rationale (plain last-write-wins doc,
-  // membership keyed by name not peerId).
-  var voiceGroups = {}; // groupId -> { name, members: [name, ...], createdAt }
-  var voiceGroupsOrder = []; // groupId order, oldest first
-  var voiceGroupsOpen = false;
-  var voiceGroupsExpanded = {}; // groupId -> true while its "add names" row is open (double-click a group to toggle)
-  var voiceGroupsGen = 0; // bumped on every local edit, so a slow/in-flight poll response can't clobber a newer local change
-
-  function voiceGroupsUrl(){
-    if(!dbUrl || !roomId) return '';
-    return dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(roomId) + '/voiceGroups.json';
-  }
-  function genGroupId(){
-    return 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
-  }
-  function pollVoiceGroups(){
-    var url = voiceGroupsUrl();
-    if(!url) return;
-    var genAtRequest = voiceGroupsGen;
-    fetch(url, { cache: 'no-store' }).then(function(r){
-      if(!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    }).then(function(data){
-      if(genAtRequest !== voiceGroupsGen) return; // a local edit happened while this was in flight -- our copy is newer, don't overwrite it
-      voiceGroups = data || {};
-      voiceGroupsOrder = Object.keys(voiceGroups).sort(function(a,b){
-        return (voiceGroups[a].createdAt||0) - (voiceGroups[b].createdAt||0);
-      });
-      renderVoiceGroups();
-      renderVoiceTargets();
-    }).catch(function(){ /* keep last-known groups showing, try again next poll */ });
-  }
-  function saveVoiceGroups(){
-    voiceGroupsGen++;
-    var url = voiceGroupsUrl();
-    if(!url) return;
-    fetch(url, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(voiceGroups) }).catch(function(){});
-    renderVoiceGroups();
-    renderVoiceTargets();
-  }
-  function createVoiceGroup(){
-    var name = prompt('Name this Talk Group (e.g. Lighting, Sound, Camera):');
-    if(name == null) return;
-    name = name.trim().slice(0,40);
-    if(!name) return;
-    var id = genGroupId();
-    voiceGroups[id] = { name: name, members: [], createdAt: Date.now() };
-    voiceGroupsOrder.push(id);
-    voiceGroupsExpanded[id] = true; // open straight to "add names" for a brand new group
-    saveVoiceGroups();
-  }
-  function renameVoiceGroup(id){
-    var g = voiceGroups[id];
-    if(!g) return;
-    var name = prompt('Rename this Talk Group:', g.name);
-    if(name == null) return;
-    name = name.trim().slice(0,40);
-    if(!name) return;
-    g.name = name;
-    saveVoiceGroups();
-  }
-  function deleteVoiceGroup(id){
-    var g = voiceGroups[id];
-    if(!g) return;
-    if(!confirm('Delete the "' + g.name + '" Talk Group? This does not remove anyone from voice, it just deletes the group.')) return;
-    delete voiceGroups[id];
-    voiceGroupsOrder = voiceGroupsOrder.filter(function(x){ return x !== id; });
-    if(talkTarget === 'group:' + id){ talkTarget = 'everyone'; applyVoiceRouting(); }
-    saveVoiceGroups();
-  }
-  function addPersonToGroup(groupId, personName){
-    var g = voiceGroups[groupId];
-    if(!g || !personName) return;
-    if(!g.members) g.members = [];
-    if(g.members.indexOf(personName) === -1){
-      g.members.push(personName);
-      saveVoiceGroups();
-      if(talkTarget === 'group:' + groupId) applyVoiceRouting();
-    }
-  }
-  function removePersonFromGroup(groupId, personName){
-    var g = voiceGroups[groupId];
-    if(!g || !g.members) return;
-    var i = g.members.indexOf(personName);
-    if(i === -1) return;
-    g.members.splice(i, 1);
-    saveVoiceGroups();
-    if(talkTarget === 'group:' + groupId) applyVoiceRouting();
-  }
-  // Plain dropdown + Add button per group, rather than drag-and-drop: works
-  // identically with a finger or a mouse, with no separate "select a name,
-  // then tap the group" mode to learn.
-  function wireGroupAddControl(select, addBtn, groupId){
-    function doAdd(){
-      var name = select.value;
-      if(!name) return;
-      addPersonToGroup(groupId, name);
-    }
-    addBtn.addEventListener('click', doAdd);
-    select.addEventListener('change', function(){
-      // Picking from the <select> is itself the whole gesture on a touch
-      // device -- add immediately rather than waiting for a second tap.
-      if(select.value) doAdd();
-    });
-  }
-  function renderVoiceGroups(){
-    if(!el.voiceGroupsList) return;
-    el.voiceGroupsList.innerHTML = '';
-    if(!voiceGroupsOrder.length){
-      var empty = document.createElement('div');
-      empty.className = 'voice-groups-empty';
-      empty.textContent = 'No Talk Groups yet — tap "+ New" above to create one.';
-      el.voiceGroupsList.appendChild(empty);
-    }
-    // Everyone currently seen (Stage Manager + other named crew with a live
-    // heartbeat), plus anyone already in a group even if their heartbeat has
-    // since expired, so an offline person can still be removed.
-    var allNames = otherCrewRoster.slice();
-    voiceGroupsOrder.forEach(function(id){
-      (voiceGroups[id].members||[]).forEach(function(n){ if(allNames.indexOf(n) === -1) allNames.push(n); });
-    });
-    voiceGroupsOrder.forEach(function(id){
-      var g = voiceGroups[id];
-      if(!g) return;
-      var members = g.members || [];
-      var expanded = !!voiceGroupsExpanded[id];
-      var card = document.createElement('div');
-      card.className = 'voice-group-card' + (expanded ? ' expanded' : '');
-      card.addEventListener('dblclick', function(ev){
-        if(ev.target.closest('.voice-group-del-btn') || ev.target.closest('.voice-person-chip') || ev.target.closest('.voice-group-title') || ev.target.closest('select') || ev.target.closest('button')) return;
-        voiceGroupsExpanded[id] = !voiceGroupsExpanded[id];
-        renderVoiceGroups();
-      });
-      var titleRow = document.createElement('div');
-      titleRow.className = 'voice-group-title-row';
-      var title = document.createElement('span');
-      title.className = 'voice-group-title';
-      title.textContent = g.name + ' (' + members.length + ')';
-      title.title = 'Tap to rename';
-      title.addEventListener('click', function(){ renameVoiceGroup(id); });
-      titleRow.appendChild(title);
-      var delBtn = document.createElement('button');
-      delBtn.type = 'button';
-      delBtn.className = 'voice-group-del-btn';
-      delBtn.textContent = '×';
-      delBtn.title = 'Delete this Talk Group';
-      delBtn.addEventListener('click', function(){ deleteVoiceGroup(id); });
-      titleRow.appendChild(delBtn);
-      card.appendChild(titleRow);
-      var membersWrap = document.createElement('div');
-      membersWrap.className = 'voice-group-members';
-      if(!members.length){
-        var hint = document.createElement('span');
-        hint.className = 'voice-group-empty-hint';
-        hint.textContent = 'No one in this group yet.';
-        membersWrap.appendChild(hint);
-      } else {
-        members.forEach(function(name){
-          var chip = document.createElement('span');
-          chip.className = 'voice-person-chip';
-          chip.textContent = name;
-          var x = document.createElement('span');
-          x.className = 'vpc-x';
-          x.textContent = '×';
-          x.title = 'Remove from group';
-          x.addEventListener('click', function(){ removePersonFromGroup(id, name); });
-          chip.appendChild(x);
-          membersWrap.appendChild(chip);
-        });
-      }
-      card.appendChild(membersWrap);
-      var available = allNames.filter(function(n){ return members.indexOf(n) === -1; });
-      if(expanded){
-        var addRow = document.createElement('div');
-        addRow.className = 'voice-group-add-row';
-        var select = document.createElement('select');
-        if(!available.length){
-          var opt = document.createElement('option');
-          opt.textContent = 'No one else to add';
-          select.appendChild(opt);
-          select.disabled = true;
-        } else {
-          var placeholder = document.createElement('option');
-          placeholder.value = '';
-          placeholder.textContent = 'Add someone…';
-          select.appendChild(placeholder);
-          available.forEach(function(name){
-            var o = document.createElement('option');
-            o.value = name;
-            o.textContent = name;
-            select.appendChild(o);
-          });
-        }
-        addRow.appendChild(select);
-        var addBtn = document.createElement('button');
-        addBtn.type = 'button';
-        addBtn.textContent = 'Add';
-        addBtn.disabled = !available.length;
-        addRow.appendChild(addBtn);
-        card.appendChild(addRow);
-        wireGroupAddControl(select, addBtn, id);
-      } else {
-        var dblHint = document.createElement('div');
-        dblHint.className = 'voice-group-dbltap-hint';
-        dblHint.textContent = 'Double-tap to add names';
-        card.appendChild(dblHint);
-      }
-      el.voiceGroupsList.appendChild(card);
-    });
-  }
-  function closeVoiceGroupsPanel(){
-    voiceGroupsOpen = false;
-    el.voiceGroupsPanel.classList.remove('open');
-    el.voiceGroupsToggleBtn.classList.remove('active');
-  }
-  if(el.voiceGroupsToggleBtn){
-    el.voiceGroupsToggleBtn.addEventListener('click', function(ev){
-      ev.stopPropagation(); // don't let the same click immediately trigger the outside-click close below
-      voiceGroupsOpen = !voiceGroupsOpen;
-      el.voiceGroupsPanel.classList.toggle('open', voiceGroupsOpen);
-      el.voiceGroupsToggleBtn.classList.toggle('active', voiceGroupsOpen);
-      if(voiceGroupsOpen) pollVoiceGroups();
-    });
-    el.voiceGroupsCloseBtn.addEventListener('click', closeVoiceGroupsPanel);
-    el.voiceGroupsNewBtn.addEventListener('click', createVoiceGroup);
-    // Tapping/clicking anywhere outside the panel (the countdown, the Crew
-    // Chat button, etc.) closes it, same as any other popover -- so it never
-    // sits open over the main countdown display once you've moved on.
-    document.addEventListener('click', function(ev){
-      if(!voiceGroupsOpen) return;
-      if(ev.target.closest('#voiceGroupsPanel')) return;
-      closeVoiceGroupsPanel();
-    });
-    // Within the panel, clicking outside a double-click-expanded group card
-    // collapses it back to its compact view.
-    document.addEventListener('click', function(ev){
-      var anyExpanded = Object.keys(voiceGroupsExpanded).some(function(id){ return voiceGroupsExpanded[id]; });
-      // Exclude "+ New" itself -- it just set a brand-new group expanded on
-      // this same click, so this handler firing on the same bubbled event
-      // must not immediately undo that.
-      if(!anyExpanded || ev.target.closest('.voice-group-card') || ev.target.closest('#voiceGroupsNewBtn')) return;
-      voiceGroupsExpanded = {};
-      renderVoiceGroups();
-    });
-  }
-  // ===== SYNC BLOCK END: voiceGroups =====
-
   function renderVoiceTargets(){
     var chips = [{ id: 'everyone', name: 'Everyone' }].concat(voiceRoster);
-    var groupChips = voiceGroupsOrder.map(function(id){ return { id: 'group:' + id, name: voiceGroups[id].name, isGroup: true, count: (voiceGroups[id].members||[]).length }; });
     el.voiceTargetRow.innerHTML = '';
     chips.forEach(function(c){
       var chip = document.createElement('div');
@@ -1262,20 +929,6 @@
       var label = document.createElement('span');
       label.textContent = c.name;
       chip.appendChild(label);
-      chip.addEventListener('click', function(){
-        talkTarget = c.id;
-        applyVoiceRouting();
-        renderVoiceTargets();
-      });
-      el.voiceTargetRow.appendChild(chip);
-    });
-    groupChips.forEach(function(c){
-      var chip = document.createElement('div');
-      chip.className = 'voice-target-chip voice-target-chip-group' + (talkTarget === c.id ? ' active' : '');
-      var label = document.createElement('span');
-      label.textContent = '👥 ' + c.name + ' (' + c.count + ')';
-      chip.appendChild(label);
-      chip.title = 'Talk to only the ' + c.count + ' people in "' + c.name + '"';
       chip.addEventListener('click', function(){
         talkTarget = c.id;
         applyVoiceRouting();
