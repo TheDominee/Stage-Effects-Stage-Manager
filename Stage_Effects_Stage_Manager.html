@@ -918,6 +918,24 @@
           </div>
         </details>
 
+        <details class="bc-advanced">
+          <summary>Voice Relay (TURN) Server <span class="bc-optional">(fixes Crew Talk voice not connecting across different networks)</span></summary>
+          <div class="bc-status" style="margin-top:0;">Crew Talk voice connects device-to-device directly by default, which works fine when everyone's on the same Wi-Fi &mdash; but it can fail to connect at all when people are on different networks (e.g. one on venue Wi-Fi, one on mobile data). A TURN relay server fixes this. Free ones are available from providers like Metered.ca or Twilio &mdash; paste what they give you below. Leave blank to use direct connections only.</div>
+          <div class="bc-row bc-row-split">
+            <label>TURN server URL <span class="bc-optional">(e.g. turn:relay.example.com:80)</span>
+              <input type="text" id="turnUrl" placeholder="turn:relay.example.com:80" spellcheck="false">
+            </label>
+            <label>TURN username
+              <input type="text" id="turnUsername" placeholder="username" spellcheck="false">
+            </label>
+          </div>
+          <div class="bc-row">
+            <label>TURN credential / password
+              <input type="text" id="turnCredential" placeholder="credential" spellcheck="false">
+            </label>
+          </div>
+        </details>
+
         <details class="bc-advanced bc-local">
           <summary>Local Network Broadcast <span class="bc-optional">(no internet needed &mdash; only reaches people on this venue's Wi-Fi, runs alongside the link above)</span></summary>
           <div class="bc-row">
@@ -1099,6 +1117,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     msgStatusText: document.getElementById('msgStatusText'),
     bcDbUrl: document.getElementById('bcDbUrl'),
     bcRoomId: document.getElementById('bcRoomId'),
+    turnUrl: document.getElementById('turnUrl'),
+    turnUsername: document.getElementById('turnUsername'),
+    turnCredential: document.getElementById('turnCredential'),
     bcViewerUrl: document.getElementById('bcViewerUrl'),
     bcCrewUrl: document.getElementById('bcCrewUrl'),
     bcAdvToggle: document.getElementById('bcAdvToggle'),
@@ -1236,7 +1257,10 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       crewViewerUrl: 'https://thedominee.github.io/Stage-Effects-Stage-Manager/Stage_Effects_Crew.html',
       enabled: false,
       localUrl: '',
-      localEnabled: false
+      localEnabled: false,
+      turnUrl: '',
+      turnUsername: '',
+      turnCredential: ''
     };
     saveJSON('sm_broadcast_settings', bcSettings);
   }
@@ -1248,6 +1272,10 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   // Same migration for the Local Network Broadcast fields, added later still.
   if(bcSettings.localUrl == null){ bcSettings.localUrl = ''; }
   if(bcSettings.localEnabled == null){ bcSettings.localEnabled = false; }
+  // Same migration for the TURN relay fields, added later still.
+  if(bcSettings.turnUrl == null){ bcSettings.turnUrl = ''; }
+  if(bcSettings.turnUsername == null){ bcSettings.turnUsername = ''; }
+  if(bcSettings.turnCredential == null){ bcSettings.turnCredential = ''; }
   el.bcDbUrl.value = bcSettings.dbUrl || '';
   el.bcRoomId.value = bcSettings.roomId || randomRoomId();
   el.bcViewerUrl.value = bcSettings.viewerUrl || '';
@@ -1255,6 +1283,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   el.bcAdvToggle.checked = bcSettings.mode === 'advanced';
   el.bcLocalUrl.value = bcSettings.localUrl || '';
   el.bcLocalToggle.checked = !!bcSettings.localEnabled;
+  el.turnUrl.value = bcSettings.turnUrl || '';
+  el.turnUsername.value = bcSettings.turnUsername || '';
+  el.turnCredential.value = bcSettings.turnCredential || '';
 
   function saveBcSettings(){
     bcSettings.dbUrl = el.bcDbUrl.value.trim();
@@ -1263,9 +1294,13 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     bcSettings.crewViewerUrl = el.bcCrewUrl.value.trim();
     bcSettings.localUrl = el.bcLocalUrl.value.trim();
     bcSettings.localEnabled = el.bcLocalToggle.checked;
+    bcSettings.turnUrl = el.turnUrl.value.trim();
+    bcSettings.turnUsername = el.turnUsername.value.trim();
+    bcSettings.turnCredential = el.turnCredential.value.trim();
     saveJSON('sm_broadcast_settings', bcSettings);
     updateLinkDisplay();
     updateLocalStatusVisibility();
+    publishTurnConfig();
   }
   el.bcDbUrl.addEventListener('change', saveBcSettings);
   el.bcRoomId.addEventListener('change', saveBcSettings);
@@ -1273,6 +1308,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   el.bcCrewUrl.addEventListener('change', saveBcSettings);
   el.bcLocalUrl.addEventListener('change', saveBcSettings);
   el.bcLocalToggle.addEventListener('change', saveBcSettings);
+  el.turnUrl.addEventListener('change', saveBcSettings);
+  el.turnUsername.addEventListener('change', saveBcSettings);
+  el.turnCredential.addEventListener('change', saveBcSettings);
 
   // Small status line under the Local Network Broadcast toggle — only shown
   // once it's actually turned on, so it doesn't clutter the panel otherwise.
@@ -1399,6 +1437,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     saveJSON('sm_broadcast_settings', bcSettings);
     setBroadcastUI();
     el.bcStatusText.textContent = 'Fresh room ready — click Start Broadcasting to get a new link (old links stop working).';
+    publishTurnConfig();
   });
 
   function buildViewerLink(){
@@ -2169,12 +2208,33 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
      needed to set up each connection (offers/answers/ICE candidates) —
      "signaling" — under broadcasts/<room>/voiceSig/<forPeerId>/... Actual
      voice audio flows phone-to-phone once connected.
-     Free STUN only (no paid TURN relay): this works best when everyone is on
-     the same WiFi, since there's no relay to fall back on if a direct
-     connection can't be made across very restrictive networks — the status
-     dot next to each name shows whether that connection actually came up, so
-     a problem is visible rather than silently missing audio. */
-  var ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }];
+     STUN-only direct connections work fine when everyone's on the same WiFi,
+     but can fail to connect at all across very restrictive/different
+     networks with no relay to fall back on — the status dot next to each
+     name shows whether that connection actually came up, so a problem is
+     visible rather than silently missing audio. An optional TURN relay
+     server (Setup → Voice Relay) fixes that; it's published to
+     broadcasts/<room>/voiceTurn.json so the Crew page picks it up too. */
+  function getIceServers(){
+    var servers = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }];
+    if(bcSettings.turnUrl){
+      var urls = bcSettings.turnUrl.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+      if(urls.length){
+        servers.push({ urls: urls, username: bcSettings.turnUsername || '', credential: bcSettings.turnCredential || '' });
+      }
+    }
+    return servers;
+  }
+  // Shares the TURN relay settings (Setup → Voice Relay) with the Crew page
+  // over the same signaling channel everything else uses, so crew phones
+  // pick them up automatically without needing their own settings screen.
+  // Harmless no-op if TURN fields are empty or Crew Chat isn't configured.
+  function publishTurnConfig(){
+    if(bcSettings.mode !== 'advanced' || !bcSettings.dbUrl || !bcSettings.roomId) return;
+    var url = bcSettings.dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(bcSettings.roomId) + '/voiceTurn.json';
+    var payload = bcSettings.turnUrl ? { url: bcSettings.turnUrl, username: bcSettings.turnUsername || '', credential: bcSettings.turnCredential || '' } : null;
+    fetch(url, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) }).catch(function(){});
+  }
   var voiceJoined = false;
   var transmitting = false;
   var talkLocked = false; // hands-free: click the lock button, or hold Push To Talk and swipe, to keep talking without holding — same as the Crew page
@@ -2270,7 +2330,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   }
 
   function createVoicePeer(peerId, name){
-    var pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    var pc = new RTCPeerConnection({ iceServers: getIceServers() });
     var entry = { pc: pc, name: name, state: 'connecting', seenCandidates: {}, answered: false, lastOfferTs: 0, audioEl: null, analyser: null, speaking: false };
     voicePeers[peerId] = entry;
     if(localVoiceTrack){
@@ -4093,6 +4153,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     if(typeof renderCrewChat === 'function') renderCrewChat();
     setBroadcastUI();
     el.bcStatusText.textContent = 'New show, new broadcast room — click Start Broadcasting to get a fresh link (old links stop working).';
+    publishTurnConfig();
   });
 
   /* ---------------- save / load show (running order to/from a file) ---------------- */

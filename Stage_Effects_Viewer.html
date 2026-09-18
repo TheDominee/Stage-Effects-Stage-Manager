@@ -805,9 +805,29 @@
      opens a direct peer-to-peer audio connection to every other participant
      who's joined voice (the Stage Manager and/or other crew), using the same
      Firebase room for the small offer/answer/ICE handshake only; the actual
-     audio never touches a server. Free STUN only, so it works best when
-     everyone is on the same WiFi as there's no relay to fall back on. */
-  var ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }];
+     audio never touches a server. STUN-only direct connections work best
+     when everyone's on the same WiFi; an optional TURN relay server (set on
+     the Stage Manager's Setup → Voice Relay panel) is picked up automatically
+     from broadcasts/<room>/voiceTurn.json so it works across different
+     networks too. */
+  var remoteTurnConfig = null;
+  function fetchTurnConfig(){
+    if(!dbUrl || !roomId) return Promise.resolve();
+    return fetch(dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(roomId) + '/voiceTurn.json')
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(data){ remoteTurnConfig = (data && data.url) ? data : null; })
+      .catch(function(){});
+  }
+  function getIceServers(){
+    var servers = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }];
+    if(remoteTurnConfig && remoteTurnConfig.url){
+      var urls = remoteTurnConfig.url.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+      if(urls.length){
+        servers.push({ urls: urls, username: remoteTurnConfig.username || '', credential: remoteTurnConfig.credential || '' });
+      }
+    }
+    return servers;
+  }
   var voiceJoined = false;
   var transmitting = false;
   var talkLocked = false; // hands-free: click the lock button, or hold Push To Talk and swipe, to keep talking without holding
@@ -872,7 +892,7 @@
   }
 
   function createVoicePeer(peerId, name){
-    var pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    var pc = new RTCPeerConnection({ iceServers: getIceServers() });
     var entry = { pc: pc, name: name, state: 'connecting', seenCandidates: {}, answered: false, lastOfferTs: 0, audioEl: null, analyser: null, speaking: false };
     voicePeers[peerId] = entry;
     if(localVoiceTrack){
@@ -1314,27 +1334,29 @@
       alert('Crew Talk voice needs the live link from your Stage Manager (advanced Firebase setup).');
       return;
     }
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream){
-      localVoiceStream = stream;
-      localVoiceTrack = stream.getAudioTracks()[0];
-      localVoiceTrack.enabled = false;
-      voiceJoined = true;
-      el.voiceJoinBtn.hidden = true;
-      el.voiceControls.hidden = false;
-      el.voiceTalkBtn.disabled = false;
-      el.voiceLockBtn.disabled = false;
-      sendHeartbeat();
-      voiceSigPollTimer = setInterval(pollVoiceSignaling, 1500);
-      voiceSpeakingTimer = setInterval(updateSpeakingIndicators, 300);
-      onVoiceRosterChange();
-      Object.keys(voicePeers).forEach(function(peerId){
-        var entry = voicePeers[peerId];
-        var sender = findAudioSender(entry.pc);
-        if(sender && !sender.track) sender.replaceTrack(localVoiceTrack).catch(function(){});
+    fetchTurnConfig().then(function(){
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream){
+        localVoiceStream = stream;
+        localVoiceTrack = stream.getAudioTracks()[0];
+        localVoiceTrack.enabled = false;
+        voiceJoined = true;
+        el.voiceJoinBtn.hidden = true;
+        el.voiceControls.hidden = false;
+        el.voiceTalkBtn.disabled = false;
+        el.voiceLockBtn.disabled = false;
+        sendHeartbeat();
+        voiceSigPollTimer = setInterval(pollVoiceSignaling, 1500);
+        voiceSpeakingTimer = setInterval(updateSpeakingIndicators, 300);
+        onVoiceRosterChange();
+        Object.keys(voicePeers).forEach(function(peerId){
+          var entry = voicePeers[peerId];
+          var sender = findAudioSender(entry.pc);
+          if(sender && !sender.track) sender.replaceTrack(localVoiceTrack).catch(function(){});
+        });
+        applyVoiceRouting();
+      }).catch(function(){
+        alert("Couldn't access the microphone — check this browser's mic permission for this page.");
       });
-      applyVoiceRouting();
-    }).catch(function(){
-      alert("Couldn't access the microphone — check this browser's mic permission for this page.");
     });
   }
 
