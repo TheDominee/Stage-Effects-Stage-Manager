@@ -121,7 +121,7 @@
      whether voice is joined so it never shifts the countdown above it. */
   #voiceBar{position:fixed;left:0;right:0;bottom:0;margin:0 auto;max-width:560px;
     height:var(--voicebar-h);box-sizing:border-box;
-    background:rgba(10,11,13,.97);border-top:1px solid rgba(128,128,128,.25);
+    background:rgba(19,31,27,.97);border-top:1px solid rgba(128,128,128,.25);
     padding:10px 14px calc(10px + env(safe-area-inset-bottom));
     display:flex;flex-direction:column;justify-content:center;gap:8px;z-index:22;}
   html[data-theme="light"] #voiceBar{background:rgba(255,255,255,.98);}
@@ -134,7 +134,7 @@
   #chatBadge{position:absolute;top:-4px;right:-4px;background:var(--danger);color:#fff;font-size:11px;font-weight:700;
     min-width:18px;height:18px;border-radius:0;display:none;align-items:center;justify-content:center;padding:0 4px;}
   #chatPanel{position:fixed;bottom:calc(var(--voicebar-h) + 72px);left:26px;width:320px;max-width:calc(100vw - 40px);max-height:50vh;
-    background:rgba(10,11,13,.97);border:1px solid rgba(128,128,128,.3);border-radius:0;box-shadow:0 8px 30px rgba(0,0,0,.4);
+    background:rgba(19,31,27,.97);border:1px solid rgba(128,128,128,.3);border-radius:0;box-shadow:0 8px 30px rgba(0,0,0,.4);
     display:none;flex-direction:column;overflow:hidden;z-index:20;}
   html[data-theme="light"] #chatPanel{background:rgba(255,255,255,.98);}
   #chatPanel.open{display:flex;}
@@ -275,7 +275,7 @@
   #voiceGroupsToggleBtn:active{transform:translateY(2px);box-shadow:inset 0 1px 4px rgba(0,0,0,.3);}
   #voiceGroupsToggleBtn.active{background:var(--gold,#FFB443);color:#131F1B;border-color:transparent;}
   #voiceGroupsPanel{position:fixed;bottom:calc(var(--voicebar-h) + 72px);right:26px;width:320px;max-width:calc(100vw - 40px);max-height:50vh;
-    background:rgba(10,11,13,.97);border:1px solid rgba(128,128,128,.3);border-radius:0;box-shadow:0 8px 30px rgba(0,0,0,.4);
+    background:rgba(19,31,27,.97);border:1px solid rgba(128,128,128,.3);border-radius:0;box-shadow:0 8px 30px rgba(0,0,0,.4);
     display:none;flex-direction:column;overflow:hidden;z-index:20;}
   html[data-theme="light"] #voiceGroupsPanel{background:rgba(255,255,255,.98);}
   #voiceGroupsPanel.open{display:flex;}
@@ -1816,7 +1816,7 @@
         el.badge.textContent = type === 'changeover' ? 'Changeover' : (type === 'performance' ? 'Performance' : 'Manual');
       }
       var actText = lastPayload.actName;
-      if(isFreeRunUp() && (lastPayload.upAlertAt || 0) > 0) actText += '  ·  Allocated ' + fmt(lastPayload.upAlertAt);
+      if(isFreeRunUp() && (lastPayload.upAlertAt || 0) > 0) actText += '  ·  ' + fmt(lastPayload.upAlertAt);
       el.actName.textContent = actText;
       fitOverflow(el.actName, 0.20);
     } else {
