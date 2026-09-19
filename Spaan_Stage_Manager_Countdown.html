@@ -259,6 +259,7 @@
   .end-clock-text span{font-family:var(--mono);color:var(--gold-accent);}
 
   .set-time-row{display:flex;gap:8px;align-items:center;justify-content:center;margin-bottom:14px;}
+  .set-time-row[hidden],.set-time-label[hidden]{display:none;}
   .set-time-row input{
     width:60px;text-align:center;font-family:var(--mono);font-size:20px;
     background:var(--input-bg);border:1px solid var(--hairline);color:var(--text);
@@ -708,7 +709,7 @@
       </div>
 
       <div class="set-time-label" id="setTimeLabel">Set countdown time</div>
-      <div class="set-time-row">
+      <div class="set-time-row" id="setTimeRow">
         <input id="hInput" type="number" min="0" max="23" value="0" aria-label="Hours">
         <span>:</span>
         <input id="mInput" type="number" min="0" max="59" value="5" aria-label="Minutes">
@@ -1104,6 +1105,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     timeDisplay: document.getElementById('timeDisplay'),
     progressFill: document.getElementById('progressFill'),
     setTimeLabel: document.getElementById('setTimeLabel'),
+    setTimeRow: document.getElementById('setTimeRow'),
     hInput: document.getElementById('hInput'),
     mInput: document.getElementById('mInput'),
     sInput: document.getElementById('sInput'),
@@ -2193,24 +2195,25 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     var html = ''+
     '<!doctype html><html><head><meta charset="utf-8">'+
     '<title>'+escapeHtml(el.showName.value || 'Crew Chat') + ' — Crew Chat</title>'+
+    '<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">'+
     '<style>'+
       '*{box-sizing:border-box;}'+
-      'body{font-family:Rockwell,"Rockwell Nova","Roboto Slab",Georgia,"Times New Roman",serif;color:#1a1f2e;margin:0;padding:0 0 34px;background:#fff;'+
+      'body{font-family:Rockwell,"Rockwell Nova","Roboto Slab",Georgia,"Times New Roman",serif;color:#16211C;margin:0;padding:0 0 34px;background:#fff;'+
         '-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
-      '.toolbar{padding:10px 16px;background:#16213F;display:flex;gap:8px;justify-content:flex-end;}'+
-      '.toolbar button{background:#C9A94F;color:#0A0B0D;border:none;border-radius:0;padding:8px 16px;font-weight:700;cursor:pointer;font-size:13px;}'+
+      '.toolbar{padding:10px 16px;background:#182620;display:flex;gap:8px;justify-content:flex-end;}'+
+      '.toolbar button{background:#FF9500;color:#131F1B;border:none;border-radius:0;padding:8px 16px;font-weight:700;cursor:pointer;font-size:13px;}'+
       '.toolbar button.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);}'+
       '@media print{ .toolbar{display:none;} }'+
-      '.head{padding:22px 32px 14px;}'+
-      '.head h1{margin:0 0 4px;font-size:22px;color:#16213F;}'+
+      '.head{padding:22px 32px 14px;border-bottom:4px solid #FF9500;}'+
+      '.head h1{font-family:"Big Shoulders Display","Rockwell",serif;font-weight:800;text-transform:uppercase;margin:0 0 4px;font-size:24px;color:#182620;letter-spacing:.3px;}'+
       '.head .sub{font-size:12px;color:#777;text-transform:uppercase;letter-spacing:.5px;}'+
       'table{width:100%;border-collapse:collapse;margin:0 32px;width:calc(100% - 64px);}'+
-      'th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:#fff;background:#16213F;padding:9px 10px;}'+
+      'th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:#fff;background:#182620;padding:9px 10px;}'+
       'td{padding:9px 10px;border-bottom:1px solid #e8e8e8;font-size:13px;vertical-align:top;}'+
       'tbody tr:nth-child(even){background:#f7f7fa;}'+
-      'td.cw-time{white-space:nowrap;font-family:"Courier New",monospace;color:#777;font-size:11.5px;}'+
-      'td.cw-who{font-weight:700;color:#16213F;white-space:nowrap;}'+
-      'td.cw-cue{color:#8a6d1f;white-space:nowrap;}'+
+      'td.cw-time{white-space:nowrap;font-family:"JetBrains Mono","Courier New",monospace;color:#777;font-size:11.5px;}'+
+      'td.cw-who{font-weight:700;color:#182620;white-space:nowrap;}'+
+      'td.cw-cue{color:#A85A00;white-space:nowrap;}'+
       'td.cw-text{word-break:break-word;}'+
       '.cw-img{display:block;max-width:220px;max-height:220px;margin-top:6px;border-radius:0;}'+
       'td.cw-empty{text-align:center;color:#999;font-style:italic;}'+
@@ -3576,8 +3579,13 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         b.classList.toggle('active', b.getAttribute('data-mode') === mode);
       });
     }
-    if(el.setTimeLabel){
-      el.setTimeLabel.textContent = mode === 'up' ? 'Starting point (optional — leave at 0 to start from zero)' : 'Set countdown time';
+    // Count Up always starts its elapsed clock at zero now (no more separate
+    // "starting point" entry) -- the countdown-duration box only means
+    // anything in Count Down mode, so it's hidden entirely in Count Up.
+    if(el.setTimeLabel && el.setTimeRow){
+      var showSetTime = mode !== 'up';
+      el.setTimeLabel.hidden = !showSetTime;
+      el.setTimeRow.hidden = !showSetTime;
     }
     if(changed){
       stopTimerInternal(true);
@@ -3769,14 +3777,16 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   function resetTimer(){
     stopTimerInternal(true);
     countdownTargetAt = null;
-    var mins = parseInt(el.mInput.value,10)||0;
-    var secs = parseInt(el.sInput.value,10)||0;
-    var hrs = parseInt(el.hInput.value,10)||0;
     if(isFreeRunUp()){
+      // No more separate "starting point" entry -- Count Up always resets
+      // its elapsed clock back to zero.
       upRunStarted = false;
-      remaining = -(hrs*3600+mins*60+secs);
+      remaining = 0;
       lastLoadedDuration = 0;
     } else {
+      var mins = parseInt(el.mInput.value,10)||0;
+      var secs = parseInt(el.sInput.value,10)||0;
+      var hrs = parseInt(el.hInput.value,10)||0;
       var idx = currentCueId ? findCueIndex(currentCueId) : -1;
       if(idx>=0){
         remaining = cueList[idx].duration;
@@ -3791,6 +3801,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   }
 
   function applyManualSetTime(){
+    // This button (and its H:M:S row) is hidden in Count Up mode -- it only
+    // ever fires for Count Down now, so it only ever sets a countdown duration.
     var hrs = parseInt(el.hInput.value,10)||0;
     var mins = parseInt(el.mInput.value,10)||0;
     var secs = parseInt(el.sInput.value,10)||0;
@@ -3799,7 +3811,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     setBadge('manual');
     el.actName.value = el.actName.value || 'Untitled Segment';
     if(isFreeRunUp()){
-      remaining = -(hrs*3600+mins*60+secs);
+      remaining = 0;
       lastLoadedDuration = 0;
       upRunStarted = false;
     } else {
@@ -4887,47 +4899,48 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     var html = ''+
     '<!doctype html><html><head><meta charset="utf-8">'+
     '<title>'+escapeHtml(el.showName.value || 'Running Order')+' — Running Order</title>'+
+    '<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">'+
     '<style>'+
       '*{box-sizing:border-box;}'+
-      'body{font-family:Rockwell,"Rockwell Nova","Roboto Slab",Georgia,"Times New Roman",serif;color:#1a1f2e;margin:0;padding:0 0 34px;background:#fff;'+
+      'body{font-family:Rockwell,"Rockwell Nova","Roboto Slab",Georgia,"Times New Roman",serif;color:#16211C;margin:0;padding:0 0 34px;background:#fff;'+
         '-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
       '.toolbar{padding:16px 32px 0;}'+
-      '.toolbar button{font-family:inherit;font-size:13px;padding:8px 16px;margin-right:8px;border:1px solid #16213F;border-radius:0;background:#16213F;color:#fff;cursor:pointer;font-weight:600;}'+
-      '.toolbar button.ghost{background:#fff;color:#16213F;}'+
-      '.head{display:flex;align-items:center;gap:18px;background:linear-gradient(120deg,#0b0e1a,#16213F 70%);padding:22px 32px;margin-bottom:0;'+
-        'border-bottom:4px solid #C9A94F;}'+
-      '.head .logo-plate{background:#fbf9f4;border:1px solid rgba(201,169,79,.35);border-radius:0;padding:9px 16px;display:flex;align-items:center;flex-shrink:0;}'+
+      '.toolbar button{font-family:inherit;font-size:13px;padding:8px 16px;margin-right:8px;border:1px solid #182620;border-radius:0;background:#182620;color:#fff;cursor:pointer;font-weight:600;}'+
+      '.toolbar button.ghost{background:#fff;color:#182620;}'+
+      '.head{display:flex;align-items:center;gap:18px;background:linear-gradient(120deg,#0d1512,#182620 70%);padding:22px 32px;margin-bottom:0;'+
+        'border-bottom:4px solid #FF9500;}'+
+      '.head .logo-plate{background:#fbf9f4;border:1px solid rgba(255,149,0,.35);border-radius:0;padding:9px 16px;display:flex;align-items:center;flex-shrink:0;}'+
       '.head .logo-plate img{height:34px;display:block;}'+
-      '.head h1{font-size:24px;margin:0;color:#fff;letter-spacing:.2px;}'+
-      '.head .sub{font-size:11.5px;color:#C9A94F;margin-top:4px;text-transform:uppercase;letter-spacing:.6px;font-weight:600;}'+
+      '.head h1{font-family:"Big Shoulders Display","Rockwell",serif;font-weight:800;text-transform:uppercase;font-size:28px;margin:0;color:#fff;letter-spacing:.3px;}'+
+      '.head .sub{font-size:11.5px;color:#FFB443;margin-top:4px;text-transform:uppercase;letter-spacing:.6px;font-weight:600;}'+
       '.meta-row{display:flex;flex-wrap:wrap;gap:0;margin:0 32px 22px;background:#f5f4ef;border:1px solid #e6e2d3;border-top:none;border-radius:0;'+
         'box-shadow:0 1px 0 rgba(0,0,0,.03);}'+
       '.meta-cell{flex:1;min-width:110px;padding:12px 18px;border-right:1px solid #e6e2d3;}'+
       '.meta-cell:last-child{border-right:none;}'+
-      '.meta-label{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;color:#8a6d1f;margin-bottom:3px;font-weight:700;}'+
-      '.meta-value{display:block;font-size:16px;font-weight:700;color:#16213F;font-family:"Courier New",monospace;}'+
+      '.meta-label{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.6px;color:#A85A00;margin-bottom:3px;font-weight:700;}'+
+      '.meta-value{display:block;font-size:16px;font-weight:700;color:#182620;font-family:"JetBrains Mono","Courier New",monospace;}'+
       '.table-wrap{margin:0 32px;}'+
       'table{width:100%;border-collapse:collapse;}'+
-      'th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:#fff;background:#16213F;padding:9px 10px;}'+
+      'th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:#fff;background:#182620;padding:9px 10px;}'+
       'th:first-child{border-radius:0;}'+
       'th:last-child{border-radius:0;text-align:right;}'+
       'td{padding:9px 10px;border-bottom:1px solid #e8e8e8;font-size:13px;vertical-align:middle;}'+
       'tbody tr:nth-child(even){background:#f7f7fa;}'+
       'tbody tr:hover{}'+
       'td.idx{color:#999;width:26px;font-weight:700;}'+
-      'td.name{font-weight:600;color:#1a1f2e;}'+
+      'td.name{font-weight:600;color:#16211C;}'+
       'td.notes{color:#555;font-size:12px;font-style:italic;max-width:240px;'+
         'word-break:break-word;overflow-wrap:break-word;word-wrap:break-word;white-space:normal;}'+
-      'td.sched,td.dur{font-family:"Courier New",monospace;white-space:nowrap;}'+
-      'td.dur{text-align:right;font-weight:700;color:#16213F;}'+
+      'td.sched,td.dur{font-family:"JetBrains Mono","Courier New",monospace;white-space:nowrap;}'+
+      'td.dur{text-align:right;font-weight:700;color:#182620;}'+
       '.type-badge{display:inline-block;border:1px solid;border-radius:0;padding:2px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;'+
         '-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
-      '.total-row td{border-bottom:none;border-top:2px solid #C9A94F;background:#fbf7ea;font-weight:700;padding-top:11px;padding-bottom:11px;}'+
-      '.total-row td.name{color:#16213F;text-transform:uppercase;font-size:11.5px;letter-spacing:.4px;}'+
+      '.total-row td{border-bottom:none;border-top:2px solid #FF9500;background:#fdf3e4;font-weight:700;padding-top:11px;padding-bottom:11px;}'+
+      '.total-row td.name{color:#182620;text-transform:uppercase;font-size:11.5px;letter-spacing:.4px;}'+
       '.total-row td.dur{font-size:15px;}'+
       '.footer{margin:26px 32px 0;padding:12px 0;border-top:1px solid #ddd;text-align:center;}'+
-      '.footer .stamp{display:inline-block;background:#16213F;color:#fff;font-size:12px;font-weight:700;letter-spacing:1px;'+
-        'text-transform:uppercase;padding:7px 22px;border-radius:0;border:1px solid #C9A94F;}'+
+      '.footer .stamp{display:inline-block;background:#182620;color:#fff;font-size:12px;font-weight:700;letter-spacing:1px;'+
+        'text-transform:uppercase;padding:7px 22px;border-radius:0;border:1px solid #FF9500;}'+
       '@media print{ .toolbar{display:none;} .head{padding:16px 6mm;} .meta-row,.table-wrap,.footer{margin-left:6mm;margin-right:6mm;} body{padding-bottom:6mm;} }'+
       '@page{ margin:0 0 14mm; }'+
     '</style></head><body>'+
