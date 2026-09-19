@@ -93,6 +93,13 @@
   #stage.alarm{animation:flashRed .9s steps(2,jump-none) infinite;}
   #stage.alarm #actName,#stage.alarm #countdown,#stage.alarm #showLabel,
   #stage.alarm #messageText,#stage.alarm #messageSubTime,#stage.alarm #messageSubTimeLabel{color:#fff !important;text-shadow:0 2px 6px rgba(0,0,0,.6);}
+  /* The docked Crew Talk bar (#voiceBar) sits as its own fixed strip *outside*
+     #stage, with its own opaque background painted on top -- so #stage's own
+     flashRed animation never reached it, leaving a dark block that didn't
+     flash along with the rest of the screen. It's a later sibling of #stage
+     in the markup, so a general sibling selector (~) picks it up and runs
+     the identical flash on it, in lockstep with #stage's own animation. */
+  #stage.alarm ~ #voiceBar{animation:flashRed .9s steps(2,jump-none) infinite;border-top-color:rgba(255,255,255,.35);}
   #idleMsg{color:var(--idle);font-size:20px;letter-spacing:2px;text-transform:uppercase;}
   #messageOverlay{display:none;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:0 60px;}
   #messageText{font-size:min(8.5vw,110px);font-weight:800;color:var(--text);text-align:center;max-width:90vw;line-height:1.15;word-wrap:break-word;}
