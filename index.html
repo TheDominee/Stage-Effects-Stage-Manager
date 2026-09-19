@@ -1691,6 +1691,10 @@
         if(!isFreeRunUp()){
           if(remaining <= 0){ el.messageSubTime.classList.add('danger'); }
           else if(remaining <= (lastPayload.warnAt || 60)){ el.messageSubTime.classList.add('warn'); }
+        } else if(lastPayload.upAlertAt > 0){
+          var elapsedUpMsg = Math.abs(remaining);
+          if(elapsedUpMsg >= lastPayload.upAlertAt){ el.messageSubTime.classList.add('danger'); }
+          else if(elapsedUpMsg >= lastPayload.upAlertAt - (lastPayload.warnAt || 60)){ el.messageSubTime.classList.add('warn'); }
         }
         el.messageSubTime.textContent = fmt(displaySeconds(remaining));
         fitOverflow(el.messageSubTime, 0.14);
@@ -1734,8 +1738,23 @@
       el.countdown.textContent = fmt(0);
       el.countdown.style.display = hasCurrent ? 'block' : 'none';
     } else if(isFreeRunUp()){
-      el.stage.classList.remove('alarm');
-      el.overrunTag.classList.remove('show');
+      var upAlertAtV = lastPayload.upAlertAt || 0;
+      var elapsedUpV = Math.abs(remaining);
+      el.countdown.classList.remove('warn','danger');
+      if(upAlertAtV > 0 && elapsedUpV >= upAlertAtV){
+        el.countdown.classList.add('danger');
+        el.stage.classList.add('alarm');
+        el.overrunTag.classList.add('show');
+        var overByV = elapsedUpV - upAlertAtV;
+        el.overrunTag.textContent = overByV > 0 ? ('OVER BY ' + fmt(overByV)) : "TIME'S UP";
+      } else if(upAlertAtV > 0 && elapsedUpV >= upAlertAtV - (lastPayload.warnAt || 60)){
+        el.countdown.classList.add('warn');
+        el.stage.classList.remove('alarm');
+        el.overrunTag.classList.remove('show');
+      } else {
+        el.stage.classList.remove('alarm');
+        el.overrunTag.classList.remove('show');
+      }
       el.countdown.textContent = fmt(displaySeconds(remaining));
     } else if(remaining <= 0){
       el.countdown.classList.add('danger');

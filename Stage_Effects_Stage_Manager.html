@@ -1837,6 +1837,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       armed: timerArmed(),
       running: running,
       remaining: remaining,
+      upAlertAt: upAlertAt,
       warnAt: (bcCue && typeof bcCue.warnAt === 'number' && bcCue.warnAt > 0) ? bcCue.warnAt : 60,
       messageMode: messageMode,
       message: currentMessage,
@@ -3498,6 +3499,11 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   /* ---------------- count mode (down / up) ---------------- */
   function setCountMode(mode){
     var changed = countMode !== mode;
+    // Captured before anything below overwrites them, so switching TO Count
+    // Up can carry the currently-loaded performer's allocated time over as
+    // the flash target, instead of always wiping to a blank manual stopwatch.
+    var priorDuration = lastLoadedDuration;
+    var priorCueId = currentCueId;
     countMode = mode;
     saveJSON('sm_count_mode', countMode);
     if(el.countModeSeg){
@@ -3508,6 +3514,27 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     if(el.setTimeLabel){
       el.setTimeLabel.textContent = mode === 'up' ? 'Starting point (optional — leave at 0 to start from zero)' : 'Set countdown time';
     }
+    if(changed){
+      stopTimerInternal(true);
+      upRunStarted = false;
+      countdownTargetAt = null;
+      if(mode === 'up' && priorDuration > 0){
+        // A performer's cue (or a manually-set time) was loaded when Count
+        // Up was chosen -- keep showing who/what this is, carry their
+        // allocated time over as the flash target, and start the elapsed
+        // clock at zero rather than discarding all of that.
+        currentCueId = priorCueId;
+        upAlertAt = priorDuration;
+        saveJSON('sm_up_alert_at', upAlertAt);
+        remaining = 0;
+      } else {
+        currentCueId = null;
+        setBadge('manual');
+        lastLoadedDuration = 0;
+        remaining = 0;
+      }
+      renderCueList();
+    }
     if(el.upAlertLabel && el.upAlertRow){
       var showUpAlert = mode === 'up';
       el.upAlertLabel.hidden = !showUpAlert;
@@ -3517,16 +3544,6 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         el.upAlertM.value = Math.floor((upAlertAt % 3600) / 60);
         el.upAlertS.value = upAlertAt % 60;
       }
-    }
-    if(changed){
-      stopTimerInternal(true);
-      currentCueId = null;
-      countdownTargetAt = null;
-      setBadge('manual');
-      upRunStarted = false;
-      lastLoadedDuration = 0;
-      remaining = 0;
-      renderCueList();
     }
     updateTimeDisplay();
     updatePresenter();
@@ -3611,7 +3628,18 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     var now = new Date();
     if(isFreeRunUp()){
       el.endClockDial.innerHTML = endClockSVG(now, now, false);
-      el.endClockLabel.textContent = armed ? 'Counting up' : 'No timer set';
+      if(upAlertAt > 0){
+        var elapsedUpEC = Math.abs(remaining);
+        if(!armed){
+          el.endClockLabel.textContent = 'Allocated: ' + fmt(upAlertAt);
+        } else if(elapsedUpEC >= upAlertAt){
+          el.endClockLabel.textContent = 'Over allocated ' + fmt(upAlertAt) + ' by ' + fmt(elapsedUpEC - upAlertAt);
+        } else {
+          el.endClockLabel.textContent = fmt(upAlertAt - elapsedUpEC) + ' left of ' + fmt(upAlertAt) + ' allocated';
+        }
+      } else {
+        el.endClockLabel.textContent = armed ? 'Counting up' : 'No timer set';
+      }
       return;
     }
     var endDate = new Date(now.getTime() + remaining*1000);
