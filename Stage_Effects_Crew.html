@@ -139,8 +139,14 @@
   html[data-theme="light"] #chatPanel{background:rgba(255,255,255,.98);}
   #chatPanel.open{display:flex;}
   #chatHeader{padding:10px 14px;border-bottom:1px solid rgba(128,128,128,.25);display:flex;align-items:center;justify-content:space-between;
-    font-size:12px;color:var(--dim);font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
-  #chatHeader button{background:none;border:none;color:var(--dim);font-size:18px;cursor:pointer;padding:2px 6px;line-height:1;}
+    font-size:12px;color:var(--dim);font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+    cursor:move;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;}
+  #chatHeader button{background:none;border:none;color:var(--dim);font-size:18px;cursor:pointer;padding:2px 6px;line-height:1;touch-action:auto;}
+  /* Dragging (see attachChatDrag()) switches the panel from its docked
+     bottom/left default to explicit left/top px, so it can be placed
+     anywhere on screen; a light lift while actively dragging makes the
+     "floating" nature obvious. */
+  #chatPanel.dragging{opacity:.92;box-shadow:0 12px 40px rgba(0,0,0,.5);}
   #chatNameRow{padding:8px 14px;border-bottom:1px solid rgba(128,128,128,.2);}
   #chatNameRow input{width:100%;background:rgba(128,128,128,.12);border:1px solid rgba(128,128,128,.3);color:var(--text);
     border-radius:0;padding:6px 8px;font-size:12px;}
@@ -428,6 +434,7 @@
     chatToggleBtn: document.getElementById('chatToggleBtn'),
     chatBadge: document.getElementById('chatBadge'),
     chatPanel: document.getElementById('chatPanel'),
+    chatHeader: document.getElementById('chatHeader'),
     chatCloseBtn: document.getElementById('chatCloseBtn'),
     chatNameInput: document.getElementById('chatNameInput'),
     chatLog: document.getElementById('chatLog'),
@@ -604,6 +611,76 @@
   function closeChat(){
     chatOpen = false;
     el.chatPanel.classList.remove('open');
+  }
+
+  /* ---- Crew Chat: movable floating panel ----
+     Drag by the "Crew Chat" header (not the Close button) to place the
+     panel anywhere on screen instead of it being docked to one corner --
+     handy when it's sitting on top of something else during a show. The
+     position is remembered per-device (localStorage) and re-clamped to
+     the current viewport on load/resize/drag so it can never end up
+     dragged fully off-screen (e.g. after rotating a phone). */
+  function clampChatPanelPos(left, top){
+    var rect = el.chatPanel.getBoundingClientRect();
+    var w = rect.width || 320, h = rect.height || 200;
+    var maxLeft = Math.max(0, window.innerWidth - w);
+    var maxTop = Math.max(0, window.innerHeight - h);
+    return { left: Math.min(Math.max(0, left), maxLeft), top: Math.min(Math.max(0, top), maxTop) };
+  }
+  function applyChatPanelPos(left, top){
+    var c = clampChatPanelPos(left, top);
+    el.chatPanel.style.left = c.left + 'px';
+    el.chatPanel.style.top = c.top + 'px';
+    el.chatPanel.style.right = 'auto';
+    el.chatPanel.style.bottom = 'auto';
+  }
+  function loadChatPanelPos(){
+    var pos = loadJSON('sm_chat_panel_pos', null);
+    if(!pos || typeof pos.left !== 'number' || typeof pos.top !== 'number') return;
+    applyChatPanelPos(pos.left, pos.top);
+  }
+  function attachChatDrag(){
+    var handle = el.chatHeader;
+    var pointerId = null, startX = 0, startY = 0, startLeft = 0, startTop = 0, moved = false;
+    handle.addEventListener('pointerdown', function(e){
+      if(e.target.closest('button')) return; // let the Close button work normally
+      var rect = el.chatPanel.getBoundingClientRect();
+      startLeft = rect.left; startTop = rect.top;
+      // Switch to explicit left/top now (from whatever default/saved
+      // positioning was in effect) so the panel doesn't jump on the first move.
+      el.chatPanel.style.left = startLeft + 'px';
+      el.chatPanel.style.top = startTop + 'px';
+      el.chatPanel.style.right = 'auto';
+      el.chatPanel.style.bottom = 'auto';
+      startX = e.clientX; startY = e.clientY;
+      moved = false;
+      pointerId = e.pointerId;
+      try{ handle.setPointerCapture(pointerId); }catch(err){}
+      el.chatPanel.classList.add('dragging');
+    });
+    handle.addEventListener('pointermove', function(e){
+      if(pointerId === null || e.pointerId !== pointerId) return;
+      var dx = e.clientX - startX, dy = e.clientY - startY;
+      if(Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+      applyChatPanelPos(startLeft + dx, startTop + dy);
+    });
+    function endDrag(e){
+      if(pointerId === null || e.pointerId !== pointerId) return;
+      try{ handle.releasePointerCapture(pointerId); }catch(err){}
+      pointerId = null;
+      el.chatPanel.classList.remove('dragging');
+      if(moved){
+        var rect = el.chatPanel.getBoundingClientRect();
+        saveJSON('sm_chat_panel_pos', { left: rect.left, top: rect.top });
+      }
+    }
+    handle.addEventListener('pointerup', endDrag);
+    handle.addEventListener('pointercancel', endDrag);
+    window.addEventListener('resize', function(){
+      if(!el.chatPanel.style.left) return; // still on its default docked position -- nothing to re-clamp
+      var rect = el.chatPanel.getBoundingClientRect();
+      applyChatPanelPos(rect.left, rect.top);
+    });
   }
 
   function renderChatBadge(){
@@ -793,6 +870,8 @@
     });
     el.chatToggleBtn.addEventListener('click', function(){ chatOpen ? closeChat() : openChat(); });
     el.chatCloseBtn.addEventListener('click', closeChat);
+    attachChatDrag();
+    loadChatPanelPos();
     refreshChatAvailability();
     setInterval(pollCrewRoster, 5000);
     pollCrewRoster();
