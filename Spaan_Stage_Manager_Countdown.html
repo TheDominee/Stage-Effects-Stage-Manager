@@ -507,7 +507,7 @@
   .voice-talk-btn{flex:none;width:104px;height:104px;border-radius:50%;border:1px solid rgba(255,255,255,.18);padding:0;
     font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
     background:radial-gradient(circle at 50% 30%, rgba(255,255,255,.09) 0%, rgba(255,255,255,.02) 55%, transparent 100%);
-    color:var(--text);cursor:pointer;touch-action:none;user-select:none;
+    color:var(--text);cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;
     box-shadow:inset 0 1px 0 rgba(255,255,255,.10), 0 8px 22px rgba(0,0,0,.45);
     transition:transform .12s ease, background .15s ease, color .15s ease, border-color .15s ease, box-shadow .2s ease;}
   .voice-talk-btn:hover:not(:disabled){border-color:#FF6B60;color:#FF6B60;transform:scale(1.04);}
@@ -708,6 +708,17 @@
         <span>:</span>
         <input id="sInput" type="number" min="0" max="59" value="0" aria-label="Seconds">
         <button class="btn small ghost" id="setTimeBtn">Set</button>
+      </div>
+
+      <div class="set-time-label" id="upAlertLabel" hidden>Flash the screen when elapsed time reaches</div>
+      <div class="set-time-row" id="upAlertRow" hidden>
+        <input id="upAlertH" type="number" min="0" max="23" value="0" aria-label="Flash-at hours">
+        <span>:</span>
+        <input id="upAlertM" type="number" min="0" max="59" value="0" aria-label="Flash-at minutes">
+        <span>:</span>
+        <input id="upAlertS" type="number" min="0" max="59" value="0" aria-label="Flash-at seconds">
+        <button class="btn small ghost" id="upAlertSetBtn">Set</button>
+        <button class="btn small ghost" id="upAlertClearBtn" title="Turn off the flash-at-target alert">Clear</button>
       </div>
 
       <div class="quick-clock-row" id="doorsCountdownRow">
@@ -1037,6 +1048,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
                                  // countdown locked to the real clock time instead of drifting
   var countMode = loadJSON('sm_count_mode', 'down'); // 'down' or 'up'
   var upRunStarted = false;     // true once Start has been pressed in count-up mode (keeps it "armed")
+  var upAlertAt = loadJSON('sm_up_alert_at', 0) || 0; // seconds -- optional target elapsed time in Count Up mode; 0 = no flash set
   var running = false;
   var tickHandle = null;
   var alarmActive = false;
@@ -1075,6 +1087,13 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     mInput: document.getElementById('mInput'),
     sInput: document.getElementById('sInput'),
     setTimeBtn: document.getElementById('setTimeBtn'),
+    upAlertLabel: document.getElementById('upAlertLabel'),
+    upAlertRow: document.getElementById('upAlertRow'),
+    upAlertH: document.getElementById('upAlertH'),
+    upAlertM: document.getElementById('upAlertM'),
+    upAlertS: document.getElementById('upAlertS'),
+    upAlertSetBtn: document.getElementById('upAlertSetBtn'),
+    upAlertClearBtn: document.getElementById('upAlertClearBtn'),
     doorsCountdownRow: document.getElementById('doorsCountdownRow'),
     countToDoorsBtn: document.getElementById('countToDoorsBtn'),
     countToShowStartBtn: document.getElementById('countToShowStartBtn'),
@@ -1254,7 +1273,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       dbUrl: 'https://stage-effects-broadcast-default-rtdb.europe-west1.firebasedatabase.app',
       roomId: randomRoomId(),
       viewerUrl: 'https://restless-king-1b9a.jhfdebruin.workers.dev',
-      crewViewerUrl: '',
+      crewViewerUrl: 'https://thedominee.github.io/Stage-Effects-Stage-Manager/Stage_Effects_Crew.html',
       enabled: false,
       localUrl: '',
       localEnabled: false,
@@ -1268,7 +1287,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   if(!bcSettings.blobUrl){ bcSettings.blobUrl = ''; }
   // Fills in the Crew page URL for settings saved before this field existed —
   // same one-time migration pattern as the two lines above.
-  if(!bcSettings.crewViewerUrl){ bcSettings.crewViewerUrl = ''; }
+  if(!bcSettings.crewViewerUrl){ bcSettings.crewViewerUrl = 'https://thedominee.github.io/Stage-Effects-Stage-Manager/Stage_Effects_Crew.html'; }
   // Same migration for the Local Network Broadcast fields, added later still.
   if(bcSettings.localUrl == null){ bcSettings.localUrl = ''; }
   if(bcSettings.localEnabled == null){ bcSettings.localEnabled = false; }
@@ -2247,6 +2266,26 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   var voiceAudioCtx = null;
   var voiceSpeakingTimer = null;
 
+  // Some browsers (iOS Safari especially) silently block a remote <audio>
+  // element from actually producing sound when it starts playing outside a
+  // direct user gesture -- which happens routinely here, since ontrack often
+  // fires seconds after Join Voice was clicked (once ICE finishes
+  // negotiating). The connection still reports "connected" and the speaking
+  // analyser still lights up (that only reads the raw track, it doesn't need
+  // playback permission), so nothing in the UI shows anything is wrong --
+  // the person just can't be heard. Retrying play() on every subsequent tap
+  // anywhere on the page (and every Push To Talk press) reliably clears the
+  // block on the next interaction instead of leaving it silently broken for
+  // the rest of the show.
+  function unlockVoiceAudio(){
+    if(voiceAudioCtx && voiceAudioCtx.state === 'suspended'){ voiceAudioCtx.resume().catch(function(){}); }
+    Object.keys(voicePeers).forEach(function(peerId){
+      var a = voicePeers[peerId].audioEl;
+      if(a && a.paused){ a.play().catch(function(){}); }
+    });
+  }
+  document.addEventListener('pointerdown', unlockVoiceAudio, { passive: true });
+
   function voiceSigUrl(forPeerId){
     if(bcSettings.mode !== 'advanced' || !bcSettings.dbUrl || !bcSettings.roomId) return '';
     return bcSettings.dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(bcSettings.roomId) + '/voiceSig/' + encodeURIComponent(forPeerId);
@@ -2347,9 +2386,12 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     pc.ontrack = function(ev){
       var audioEl = document.createElement('audio');
       audioEl.autoplay = true;
+      audioEl.playsInline = true;
       audioEl.srcObject = ev.streams[0];
       el.voiceAudioSinks.appendChild(audioEl);
       entry.audioEl = audioEl;
+      var playAttempt = audioEl.play();
+      if(playAttempt && playAttempt.catch) playAttempt.catch(function(){ /* blocked by autoplay policy -- unlockVoiceAudio() retries on the next tap/Talk press */ });
       var ctx = ensureVoiceAudioCtx();
       if(ctx){
         try{
@@ -2827,6 +2869,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   var TALK_SWIPE_LOCK_PX = 32;
   el.voiceTalkBtn.addEventListener('pointerdown', function(e){
     e.preventDefault();
+    unlockVoiceAudio();
     if(talkLocked){
       setTalkLocked(false);
       setTransmitting(false);
@@ -3465,6 +3508,16 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     if(el.setTimeLabel){
       el.setTimeLabel.textContent = mode === 'up' ? 'Starting point (optional — leave at 0 to start from zero)' : 'Set countdown time';
     }
+    if(el.upAlertLabel && el.upAlertRow){
+      var showUpAlert = mode === 'up';
+      el.upAlertLabel.hidden = !showUpAlert;
+      el.upAlertRow.hidden = !showUpAlert;
+      if(showUpAlert){
+        el.upAlertH.value = Math.floor(upAlertAt / 3600);
+        el.upAlertM.value = Math.floor((upAlertAt % 3600) / 60);
+        el.upAlertS.value = upAlertAt % 60;
+      }
+    }
     if(changed){
       stopTimerInternal(true);
       currentCueId = null;
@@ -3518,7 +3571,14 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
   function getState(){
     if(!timerArmed()) return 'idle';
-    if(isFreeRunUp()) return 'normal';
+    if(isFreeRunUp()){
+      if(upAlertAt > 0){
+        var elapsed = Math.abs(remaining);
+        if(elapsed >= upAlertAt) return 'danger';
+        if(elapsed >= upAlertAt - getWarnThreshold()) return 'warning';
+      }
+      return 'normal';
+    }
     if(remaining <= 0) return 'danger';
     if(remaining <= getWarnThreshold()) return 'warning';
     return 'normal';
@@ -3660,6 +3720,33 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     updatePresenter();
   }
 
+  // Count Up has no fixed end, so unlike Count Down there was previously no
+  // way to be alerted once a performance actually reaches its planned length
+  // -- the screen just kept counting with no indication anything had
+  // happened. This sets an optional target elapsed time that flashes the
+  // stage display (and this control panel) the same way a countdown running
+  // out does, once elapsed time reaches it. Persisted like the other display
+  // settings so it doesn't need re-entering every time Count Up is used.
+  function applyUpAlert(){
+    var hrs = parseInt(el.upAlertH.value,10)||0;
+    var mins = parseInt(el.upAlertM.value,10)||0;
+    var secs = parseInt(el.upAlertS.value,10)||0;
+    upAlertAt = hrs*3600+mins*60+secs;
+    saveJSON('sm_up_alert_at', upAlertAt);
+    alarmActive = false; // re-arm: a newly set/changed target should be able to flash again
+    updateTimeDisplay();
+    updatePresenter();
+  }
+
+  function clearUpAlert(){
+    upAlertAt = 0;
+    el.upAlertH.value = 0; el.upAlertM.value = 0; el.upAlertS.value = 0;
+    saveJSON('sm_up_alert_at', 0);
+    alarmActive = false;
+    updateTimeDisplay();
+    updatePresenter();
+  }
+
   // "Count to Doors" / "Count to Show Start" — counts down to the clock time set
   // in the Doors / Show start time field above the running order, staying locked
   // to that real time (see countdownTargetAt / tick()) rather than an arbitrary
@@ -3716,8 +3803,12 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
     // <=0 rather than ===0: the clock-locked recompute above can round straight
     // past zero between two ticks, so an exact-match check could miss it.
-    if(remaining <= 0 && !alarmActive && !isFreeRunUp()){
-      triggerAlarm();
+    if(!alarmActive){
+      if(!isFreeRunUp() && remaining <= 0){
+        triggerAlarm();
+      } else if(isFreeRunUp() && upAlertAt > 0 && Math.abs(remaining) >= upAlertAt){
+        triggerAlarm();
+      }
     }
     updatePresenter();
   }
@@ -3973,9 +4064,25 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     var stageEl = d.getElementById('stage');
     var overrunEl = d.getElementById('overrunTag');
 
-    if(!timerArmed() || isFreeRunUp()){
+    if(!timerArmed()){
       stageEl.classList.remove('alarm');
       overrunEl.classList.remove('show');
+    } else if(isFreeRunUp()){
+      var elapsedUp = Math.abs(remaining);
+      if(upAlertAt > 0 && elapsedUp >= upAlertAt){
+        cdEl.classList.add('danger');
+        stageEl.classList.add('alarm');
+        overrunEl.classList.add('show');
+        var overBy = elapsedUp - upAlertAt;
+        overrunEl.textContent = overBy > 0 ? 'OVER BY ' + fmt(overBy) : "TIME'S UP";
+      } else if(upAlertAt > 0 && elapsedUp >= upAlertAt - getWarnThreshold()){
+        cdEl.classList.add('warn');
+        stageEl.classList.remove('alarm');
+        overrunEl.classList.remove('show');
+      } else {
+        stageEl.classList.remove('alarm');
+        overrunEl.classList.remove('show');
+      }
     } else if(remaining <= 0){
       cdEl.classList.add('danger');
       stageEl.classList.add('alarm');
@@ -4069,6 +4176,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   /* ---------------- events ---------------- */
   el.openPresenterBtn.addEventListener('click', openPresenterWindow);
   el.setTimeBtn.addEventListener('click', applyManualSetTime);
+  el.upAlertSetBtn.addEventListener('click', applyUpAlert);
+  el.upAlertClearBtn.addEventListener('click', clearUpAlert);
   if(!ENABLE_DOORS_COUNTDOWN && el.doorsCountdownRow){
     el.doorsCountdownRow.remove();
   } else {
