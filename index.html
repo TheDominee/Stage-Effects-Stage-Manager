@@ -1544,6 +1544,19 @@
   function isFreeRunUp(){ return !!lastPayload && lastPayload.countMode === 'up'; }
   function displaySeconds(r){ return isFreeRunUp() ? Math.abs(r) : r; }
 
+  // Same periodic 3s-on/9s-off flash burst as the Stage Manager's own
+  // extended display, computed independently here from whenever THIS page
+  // first observes the over-time state (a phone that joins mid-overrun just
+  // starts its own cycle from that moment) -- the danger color and
+  // "OVER BY..." text stay on screen continuously either way, only the
+  // full-screen background flash is intermittent.
+  var alarmBurstSince = null;
+  function alarmBurstOn(active){
+    if(!active){ alarmBurstSince = null; return false; }
+    if(alarmBurstSince === null) alarmBurstSince = Date.now();
+    return ((Date.now() - alarmBurstSince) % 12000) < 3000;
+  }
+
   /* The actual vertical room #stage has to lay out its content — window
      height minus its own top/bottom padding, which includes the docked Crew
      Talk bar's reserved space on the crew link (see #stage.has-crew-bar).
@@ -1735,6 +1748,7 @@
     if(!armed){
       el.stage.classList.remove('alarm');
       el.overrunTag.classList.remove('show');
+      alarmBurstOn(false);
       el.countdown.textContent = fmt(0);
       el.countdown.style.display = hasCurrent ? 'block' : 'none';
     } else if(isFreeRunUp()){
@@ -1743,28 +1757,31 @@
       el.countdown.classList.remove('warn','danger');
       if(upAlertAtV > 0 && elapsedUpV >= upAlertAtV){
         el.countdown.classList.add('danger');
-        el.stage.classList.add('alarm');
         el.overrunTag.classList.add('show');
         var overByV = elapsedUpV - upAlertAtV;
         el.overrunTag.textContent = overByV > 0 ? ('OVER BY ' + fmt(overByV)) : "TIME'S UP";
+        el.stage.classList.toggle('alarm', alarmBurstOn(true));
       } else if(upAlertAtV > 0 && elapsedUpV >= upAlertAtV - (lastPayload.warnAt || 60)){
         el.countdown.classList.add('warn');
         el.stage.classList.remove('alarm');
         el.overrunTag.classList.remove('show');
+        alarmBurstOn(false);
       } else {
         el.stage.classList.remove('alarm');
         el.overrunTag.classList.remove('show');
+        alarmBurstOn(false);
       }
       el.countdown.textContent = fmt(displaySeconds(remaining));
     } else if(remaining <= 0){
       el.countdown.classList.add('danger');
-      el.stage.classList.add('alarm');
       el.overrunTag.classList.add('show');
       el.overrunTag.textContent = remaining < -0.5 ? ('OVER BY ' + fmt(Math.abs(remaining))) : "TIME'S UP";
+      el.stage.classList.toggle('alarm', alarmBurstOn(true));
       el.countdown.textContent = fmt(remaining);
     } else {
       el.stage.classList.remove('alarm');
       el.overrunTag.classList.remove('show');
+      alarmBurstOn(false);
       if(remaining <= (lastPayload.warnAt || 60)) el.countdown.classList.add('warn');
       el.countdown.textContent = fmt(remaining);
     }

@@ -432,6 +432,12 @@
     border-color:var(--hairline);background:var(--input-bg);
   }
   table.cue-table input.row-tc::placeholder{color:var(--text-dim);opacity:.5;font-size:10.5px;}
+  table.cue-table .row-dir-btn{
+    background:transparent;border:1px solid transparent;color:var(--text-dim);cursor:pointer;
+    font-size:12px;padding:1px 4px;border-radius:0;margin-left:4px;line-height:1;font-family:var(--mono);
+  }
+  table.cue-table .row-dir-btn:hover{border-color:var(--hairline);background:var(--input-bg);color:var(--text);}
+  table.cue-table .row-dir-btn.dir-up{color:var(--gold-accent);}
   table.cue-table td.dur-cell{white-space:nowrap;}
   table.cue-table .dur-line, table.cue-table .warn-line, table.cue-table .tc-line{display:flex;align-items:center;gap:1px;}
   table.cue-table .warn-line, table.cue-table .tc-line{margin-top:3px;}
@@ -1052,6 +1058,20 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   var running = false;
   var tickHandle = null;
   var alarmActive = false;
+  // The big full-screen flash (on the extended display and Crew/Viewer
+  // pages) used to stay lit continuously for as long as a cue ran over --
+  // distracting to look at through a whole long overrun. Instead it now
+  // pulses in short bursts: 3 seconds flashing, 9 seconds calm, repeating,
+  // starting the instant a cue actually goes over (not delayed to line up
+  // with some arbitrary clock boundary). The countdown's red color and the
+  // "OVER BY..." text stay on screen the whole time either way -- only the
+  // background flash itself is intermittent.
+  var alarmBurstSince = null; // ms epoch -- when the current over-time state began
+  function alarmBurstOn(active){
+    if(!active){ alarmBurstSince = null; return false; }
+    if(alarmBurstSince === null) alarmBurstSince = Date.now();
+    return ((Date.now() - alarmBurstSince) % 12000) < 3000;
+  }
   var messageMode = false;
   var currentMessage = '';
   var messageFlashing = false;
@@ -1273,7 +1293,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       dbUrl: 'https://stage-effects-broadcast-default-rtdb.europe-west1.firebasedatabase.app',
       roomId: randomRoomId(),
       viewerUrl: 'https://restless-king-1b9a.jhfdebruin.workers.dev',
-      crewViewerUrl: 'https://thedominee.github.io/Stage-Effects-Stage-Manager/Stage_Effects_Crew.html',
+      crewViewerUrl: 'https://thedominee.github.io/Stage-Effects-Stage-Manager/Spaan_Crew.html',
       enabled: false,
       localUrl: '',
       localEnabled: false,
@@ -1287,7 +1307,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   if(!bcSettings.blobUrl){ bcSettings.blobUrl = ''; }
   // Fills in the Crew page URL for settings saved before this field existed —
   // same one-time migration pattern as the two lines above.
-  if(!bcSettings.crewViewerUrl){ bcSettings.crewViewerUrl = 'https://thedominee.github.io/Stage-Effects-Stage-Manager/Stage_Effects_Crew.html'; }
+  if(!bcSettings.crewViewerUrl){ bcSettings.crewViewerUrl = 'https://thedominee.github.io/Stage-Effects-Stage-Manager/Spaan_Crew.html'; }
   // Same migration for the Local Network Broadcast fields, added later still.
   if(bcSettings.localUrl == null){ bcSettings.localUrl = ''; }
   if(bcSettings.localEnabled == null){ bcSettings.localEnabled = false; }
@@ -3210,6 +3230,34 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       durLine.appendChild(sIn);
       durLine.appendChild(document.createTextNode('s'));
 
+      // Per-cue Count Up / Count Down -- most cues count down as always, but
+      // any individual cue can be switched to count up instead (e.g. a band
+      // set where the SM wants to watch elapsed time rather than remaining
+      // time). Loading this cue applies whichever direction it's set to;
+      // the running order itself still advances through cues in schedule
+      // order exactly as before, regardless of each cue's own direction.
+      var dirBtn = document.createElement('button');
+      dirBtn.type = 'button';
+      dirBtn.className = 'row-dir-btn';
+      function renderDirBtn(){
+        var isUp = c.countDir === 'up';
+        dirBtn.textContent = isUp ? '↑ UP' : '↓ DN';
+        dirBtn.classList.toggle('dir-up', isUp);
+        dirBtn.title = isUp
+          ? 'This cue counts UP (elapsed time) once loaded, flashing once it reaches its duration above -- click to switch it to Count Down'
+          : 'This cue counts DOWN (time remaining) once loaded, same as always -- click to switch it to Count Up';
+      }
+      renderDirBtn();
+      dirBtn.addEventListener('click', function(){
+        c.countDir = (c.countDir === 'up') ? 'down' : 'up';
+        renderDirBtn();
+        persist();
+        // If this cue is the one currently loaded/live, apply the new
+        // direction immediately rather than waiting for it to be reloaded.
+        if(c.id === currentCueId) loadCue(c.id);
+      });
+      durLine.appendChild(dirBtn);
+
       var warnLine = document.createElement('div');
       warnLine.className = 'warn-line';
       var warnIn = document.createElement('input');
@@ -3470,12 +3518,28 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     var idx = findCueIndex(id);
     if(idx<0) return;
     var c = cueList[idx];
-    if(countMode !== 'down') setCountMode('down');
+    var dir = (c.countDir === 'up') ? 'up' : 'down';
+    if(countMode !== dir) setCountMode(dir);
     currentCueId = id;
     countdownTargetAt = null;
     el.actName.value = c.name;
-    remaining = c.duration;
     lastLoadedDuration = c.duration;
+    if(dir === 'up'){
+      // Show/flash at THIS cue's own allocated time, not whatever the Flash-at
+      // field happened to hold before (setCountMode's own carry-over is for
+      // manually toggling mode mid-cue -- loading a cue is more specific than
+      // that, so it always wins).
+      upAlertAt = c.duration;
+      saveJSON('sm_up_alert_at', upAlertAt);
+      remaining = 0;
+      if(el.upAlertH){
+        el.upAlertH.value = Math.floor(upAlertAt / 3600);
+        el.upAlertM.value = Math.floor((upAlertAt % 3600) / 60);
+        el.upAlertS.value = upAlertAt % 60;
+      }
+    } else {
+      remaining = c.duration;
+    }
     setBadge(c.type);
     stopTimerInternal(false);
     updateTimeDisplay();
@@ -4095,25 +4159,27 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     if(!timerArmed()){
       stageEl.classList.remove('alarm');
       overrunEl.classList.remove('show');
+      alarmBurstOn(false);
     } else if(isFreeRunUp()){
       var elapsedUp = Math.abs(remaining);
       if(upAlertAt > 0 && elapsedUp >= upAlertAt){
         cdEl.classList.add('danger');
-        stageEl.classList.add('alarm');
         overrunEl.classList.add('show');
         var overBy = elapsedUp - upAlertAt;
         overrunEl.textContent = overBy > 0 ? 'OVER BY ' + fmt(overBy) : "TIME'S UP";
+        stageEl.classList.toggle('alarm', alarmBurstOn(true));
       } else if(upAlertAt > 0 && elapsedUp >= upAlertAt - getWarnThreshold()){
         cdEl.classList.add('warn');
         stageEl.classList.remove('alarm');
         overrunEl.classList.remove('show');
+        alarmBurstOn(false);
       } else {
         stageEl.classList.remove('alarm');
         overrunEl.classList.remove('show');
+        alarmBurstOn(false);
       }
     } else if(remaining <= 0){
       cdEl.classList.add('danger');
-      stageEl.classList.add('alarm');
       if(remaining < 0){
         overrunEl.classList.add('show');
         overrunEl.textContent = 'OVER BY ' + fmt(Math.abs(remaining));
@@ -4121,13 +4187,16 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         overrunEl.classList.add('show');
         overrunEl.textContent = "TIME'S UP";
       }
+      stageEl.classList.toggle('alarm', alarmBurstOn(true));
     } else if(remaining <= getWarnThreshold()){
       cdEl.classList.add('warn');
       stageEl.classList.remove('alarm');
       overrunEl.classList.remove('show');
+      alarmBurstOn(false);
     } else {
       stageEl.classList.remove('alarm');
       overrunEl.classList.remove('show');
+      alarmBurstOn(false);
     }
 
     var nextC = null;
@@ -4312,6 +4381,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       cueList: cueList.map(function(c){
         var out = { id: c.id, type: c.type, name: c.name, duration: c.duration, notes: c.notes || '', printNote: !!c.printNote };
         if(typeof c.warnAt === 'number' && c.warnAt > 0) out.warnAt = c.warnAt;
+        if(c.countDir === 'up') out.countDir = 'up';
         if(c.tc) out.tc = c.tc;
         if(isCustomType(c.type)){
           out.kindLabel = c.kindLabel || 'Custom';
@@ -4499,7 +4569,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       ['Show Start', data.showStartTime || ''],
       ['Curfew', data.showCurfew || ''],
       [],
-      ['Type', 'Name', 'Minutes', 'Seconds', 'Notes', 'Print Note', 'Color', 'Warn (s)', 'TC']
+      ['Type', 'Name', 'Minutes', 'Seconds', 'Notes', 'Print Note', 'Color', 'Warn (s)', 'TC', 'Direction']
     ];
     data.cueList.forEach(function(c){
       var typeLabel = c.type === 'performance' ? 'Performance' : c.type === 'changeover' ? 'Changeover' : (c.kindLabel || 'Custom');
@@ -4507,10 +4577,10 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       var secs = (c.duration || 0) % 60;
       var color = isCustomType(c.type) ? (c.kindColor || '') : '';
       var warnAt = (typeof c.warnAt === 'number' && c.warnAt > 0) ? c.warnAt : '';
-      aoa.push([typeLabel, c.name || '', mins, secs, c.notes || '', c.printNote ? 'Yes' : '', color, warnAt, c.tc || '']);
+      aoa.push([typeLabel, c.name || '', mins, secs, c.notes || '', c.printNote ? 'Yes' : '', color, warnAt, c.tc || '', c.countDir === 'up' ? 'Up' : 'Down']);
     });
     var ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [{ wch: 16 }, { wch: 34 }, { wch: 9 }, { wch: 9 }, { wch: 24 }, { wch: 11 }, { wch: 10 }, { wch: 10 }, { wch: 13 }];
+    ws['!cols'] = [{ wch: 16 }, { wch: 34 }, { wch: 9 }, { wch: 9 }, { wch: 24 }, { wch: 11 }, { wch: 10 }, { wch: 10 }, { wch: 13 }, { wch: 11 }];
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Running Order');
     return wb;
@@ -4584,6 +4654,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       };
       var warnAtVal = parseInt(c && c.warnAt, 10);
       if(warnAtVal > 0) cue.warnAt = warnAtVal;
+      if(c && c.countDir === 'up') cue.countDir = 'up';
       var tcVal = normalizeTcCode(c && c.tc);
       if(tcVal) cue.tc = tcVal;
       if(isCustomType(type)){
@@ -4690,7 +4761,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     function cellStr(v){ return (v === null || v === undefined) ? '' : String(v).trim(); }
 
     var headerRowIdx = -1;
-    var col = { type:-1, name:-1, min:-1, sec:-1, color:-1, notes:-1, print:-1, warn:-1, tc:-1 };
+    var col = { type:-1, name:-1, min:-1, sec:-1, color:-1, notes:-1, print:-1, warn:-1, tc:-1, dir:-1 };
     for(var i=0;i<rows.length;i++){
       var row = rows[i] || [];
       var lower = row.map(function(c){ return cellStr(c).toLowerCase(); });
@@ -4707,6 +4778,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
           if(col.notes === -1 && lower[j].indexOf('note') === 0) col.notes = j;
           if(col.warn === -1 && lower[j].indexOf('warn') === 0) col.warn = j;
           if(col.tc === -1 && lower[j].indexOf('tc') === 0) col.tc = j;
+          if(col.dir === -1 && lower[j].indexOf('direct') === 0) col.dir = j;
         }
         break;
       }
@@ -4759,6 +4831,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       if(warnAtCell > 0) cue.warnAt = warnAtCell;
       var tcCell = col.tc !== -1 ? normalizeTcCode(cellStr(dr[col.tc])) : null;
       if(tcCell) cue.tc = tcCell;
+      var dirCell = col.dir !== -1 ? cellStr(dr[col.dir]).toLowerCase() : '';
+      if(dirCell === 'up') cue.countDir = 'up';
       if(isCustomType(type)){
         cue.kindLabel = kindByLabel[typeLower].label;
         cue.kindColor = kindByLabel[typeLower].color;
