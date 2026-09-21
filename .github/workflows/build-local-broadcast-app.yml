@@ -1,0 +1,111 @@
+name: Build Local Broadcast app
+
+# Builds the one-click "Stage Effects Local Broadcast" app for Mac and
+# Windows and publishes them to a permanent download page (the
+# "local-broadcast-latest" Release on this repo). Nothing needs to be
+# installed on your own computer to get new builds — GitHub's own servers
+# do the building.
+#
+# Runs automatically whenever local-broadcast-server/ changes on main, and
+# can also be run by hand: go to this repo's "Actions" tab (top of the
+# GitHub page) → "Build Local Broadcast app" in the left list → "Run
+# workflow" button → "Run workflow" again to confirm. No command line
+# needed, it's all buttons on the website.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'local-broadcast-server/**'
+      - '.github/workflows/build-local-broadcast-app.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build dependencies
+        run: pip install pyinstaller qrcode
+
+      - name: Build Stage Effects Local Broadcast.exe
+        working-directory: local-broadcast-server
+        run: >
+          pyinstaller --onefile --windowed
+          --name "Stage Effects Local Broadcast"
+          --add-data "Stage_Effects_Crew.html;."
+          --add-data "Stage_Effects_Viewer.html;."
+          --hidden-import qrcode
+          local_broadcast_app.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Stage Effects Local Broadcast (Windows)
+          path: local-broadcast-server/dist/Stage Effects Local Broadcast.exe
+
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build dependencies
+        run: pip install pyinstaller qrcode
+
+      - name: Build Stage Effects Local Broadcast.app
+        working-directory: local-broadcast-server
+        run: >
+          pyinstaller --onefile --windowed
+          --name "Stage Effects Local Broadcast"
+          --add-data "Stage_Effects_Crew.html:."
+          --add-data "Stage_Effects_Viewer.html:."
+          --hidden-import qrcode
+          local_broadcast_app.py
+
+      - name: Zip the .app bundle
+        working-directory: local-broadcast-server/dist
+        # A .app is actually a folder -- zip it so it survives upload/
+        # download as one file and keeps its "it's an app" structure intact.
+        run: ditto -c -k --sequesterRsrc --keepParent "Stage Effects Local Broadcast.app" "Stage Effects Local Broadcast (Mac).zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Stage Effects Local Broadcast (Mac)
+          path: local-broadcast-server/dist/Stage Effects Local Broadcast (Mac).zip
+
+  publish-release:
+    needs: [build-windows, build-mac]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: downloads
+
+      - name: Publish to the "Local Broadcast — latest build" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: local-broadcast-latest
+          name: 'Local Broadcast — latest build'
+          body: >
+            Always up to date with the local-broadcast-server/ folder on
+            main. Download the file for your computer below, double-click
+            it, done — no Python install, no terminal window.
+
+
+            First run: Mac will say the app is from an "unidentified
+            developer" — right-click (Control-click) it and choose "Open"
+            once. Windows may show a "Windows protected your PC" notice —
+            click "More info" then "Run anyway" once. Neither warning
+            appears again after that first time.
+          files: downloads/**/*
+          fail_on_unmatched_files: true
