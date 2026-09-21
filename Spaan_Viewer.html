@@ -1450,6 +1450,18 @@
       alert('Crew Talk voice needs the live link from your Stage Manager (advanced Firebase setup).');
       return;
     }
+    // Browsers only expose the microphone (navigator.mediaDevices) on a
+    // "secure context" -- an https page, or a page loaded from localhost/
+    // 127.0.0.1 itself. A Local Network Broadcast link opened at the app's
+    // real address (e.g. http://192.168.x.x:8765/...) is neither, on ANY
+    // browser -- so without this check, clicking Join Voice here silently
+    // does nothing (the microphone call throws before anything else runs).
+    // Chat and the countdown still work fine over that same link since
+    // fetch() has no such restriction -- only the microphone is blocked.
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      alert("Can't use the microphone on this link — browsers only allow that over a secure (https) connection, or on the same computer running Local Broadcast. Crew Chat and the countdown still work here; for voice, use the usual internet link instead, or Crew Talk from the Local Broadcast computer itself.");
+      return;
+    }
     fetchTurnConfig().then(function(){
       navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream){
         localVoiceStream = stream;
