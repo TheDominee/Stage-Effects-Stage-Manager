@@ -968,8 +968,7 @@
             <br>Works in any browser (Safari included) when you open Stage Manager from the "Open Stage Manager" button <i>inside</i> that app, instead of this usual link &mdash; the app's own window explains why.
           </div>
           <div class="bc-status bc-local-detected" id="bcLocalDetectedBanner" hidden>
-            Found the Local Broadcast app running on this computer at <b id="bcLocalDetectedAddr"></b>.
-            <button class="btn small gold" id="bcLocalDetectedEnableBtn" type="button">Use it</button>
+            Found the Local Broadcast app running on this computer at <b id="bcLocalDetectedAddr"></b> &mdash; already turned on and added to your Copy Viewer/Crew Link buttons above automatically, nothing to do here.
           </div>
           <div class="bc-row">
             <label>Local server address <span class="bc-optional">(open the Local Broadcast app on this computer &mdash; it shows this address on screen)</span>
@@ -980,13 +979,24 @@
             <label class="bc-adv-check"><input type="checkbox" id="bcLocalToggle"> Also broadcast to the local network <span class="bc-optional">(sends alongside the broadcast above whenever Start Broadcasting is on &mdash; works even if the internet drops)</span></label>
           </div>
           <div class="bc-status" id="bcLocalStatusText" hidden></div>
-          <div class="bc-actions">
+          <div class="bc-status" style="margin-top:0;">
+            Once this is on, the <b>Copy Viewer Link</b> / <b>Copy Crew Link</b> buttons (and their QR codes) up top hand out the one link that does both &mdash; there's nothing extra to copy from down here.
+          </div>
+          <!-- The copy/QR/link-display controls that used to live here were a
+               second, separate "local link" -- now redundant, since the
+               buttons up top already give out this same local link (with the
+               internet fallback baked in) the moment "Also broadcast to the
+               local network" is checked. Hidden via inline style (not
+               removed) so updateLinkDisplay()/copyLocalLink() etc. below,
+               which still reference these elements, keep working exactly as
+               before -- they just have nothing visible to update. -->
+          <div class="bc-actions" style="display:none;">
             <button class="btn small ghost" id="bcCopyLocalViewerLinkBtn">Copy Local Viewer Link</button>
             <button class="btn small ghost" id="bcQrLocalViewerBtn" title="Show a scannable QR code for the local Viewer link">QR</button>
             <button class="btn small ghost" id="bcCopyLocalCrewLinkBtn">Copy Local Crew Link</button>
             <button class="btn small ghost" id="bcQrLocalCrewBtn" title="Show a scannable QR code for the local Crew link">QR</button>
           </div>
-          <div class="bc-qr-row" id="bcQrLocalRow" hidden>
+          <div class="bc-qr-row" id="bcQrLocalRow" hidden style="display:none;">
             <div class="bc-qr-box" id="bcQrLocalViewerBox" hidden>
               <div class="bc-qr-code" id="bcQrLocalViewerCode"></div>
               <div class="bc-qr-label">Scan for Viewer (local)</div>
@@ -996,7 +1006,7 @@
               <div class="bc-qr-label">Scan for Crew (local)</div>
             </div>
           </div>
-          <div class="bc-link-row" id="bcLocalViewerLinkRow" hidden>
+          <div class="bc-link-row" id="bcLocalViewerLinkRow" hidden style="display:none;">
             <label>Local Viewer link <span class="bc-optional">(click the box to select it, or use Copy)</span>
               <div class="bc-link-copy">
                 <input type="text" id="bcLocalViewerLinkDisplay" readonly spellcheck="false" aria-label="Local viewer link">
@@ -1004,7 +1014,7 @@
               </div>
             </label>
           </div>
-          <div class="bc-link-row" id="bcLocalCrewLinkRow" hidden>
+          <div class="bc-link-row" id="bcLocalCrewLinkRow" hidden style="display:none;">
             <label>Local Crew link <span class="bc-optional">(click the box to select it, or use Copy)</span>
               <div class="bc-link-copy">
                 <input type="text" id="bcLocalCrewLinkDisplay" readonly spellcheck="false" aria-label="Local crew link">
@@ -1203,7 +1213,6 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     bcLocalStatusText: document.getElementById('bcLocalStatusText'),
     bcLocalDetectedBanner: document.getElementById('bcLocalDetectedBanner'),
     bcLocalDetectedAddr: document.getElementById('bcLocalDetectedAddr'),
-    bcLocalDetectedEnableBtn: document.getElementById('bcLocalDetectedEnableBtn'),
     bcCopyLocalViewerLinkBtn: document.getElementById('bcCopyLocalViewerLinkBtn'),
     bcQrLocalViewerBtn: document.getElementById('bcQrLocalViewerBtn'),
     bcCopyLocalCrewLinkBtn: document.getElementById('bcCopyLocalCrewLinkBtn'),
@@ -1388,15 +1397,24 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
   // Auto-detect the one-click Local Broadcast app running on THIS same
   // computer (it always listens on the loopback address too, not just the
-  // LAN one) so Setup doesn't require typing/pasting an address at all in
-  // the common case of running Stage Manager and the app side by side.
-  // Only offers itself -- never overwrites a URL already filled in, and
-  // never turns broadcasting on by itself; Erik still clicks "Use it".
+  // LAN one) so Setup doesn't require typing/pasting an address, or finding
+  // and ticking a checkbox, at all in the common case of running Stage
+  // Manager and the app side by side. The moment it's found, its address is
+  // filled in AND "Also broadcast to the local network" is switched on
+  // automatically -- the Copy Viewer/Crew Link buttons up top immediately
+  // start handing out the one combined (local + internet-fallback) link.
+  // The confirmation banner below (inside the collapsed "Local Network
+  // Broadcast" advanced section) is purely informational now; there is
+  // nothing to click for this to take effect. Never overwrites a URL
+  // already filled in by hand, or a broadcast that's already on.
   function detectLocalBroadcastServer(){
     if(bcSettings.localEnabled || el.bcLocalUrl.value.trim()) return; // already set up
     if(typeof fetch === 'undefined') return;
     var offerAddr = function(addr){
       if(bcSettings.localEnabled || el.bcLocalUrl.value.trim()) return; // a detection/entry already landed first
+      el.bcLocalUrl.value = addr;
+      el.bcLocalToggle.checked = true;
+      saveBcSettings();
       el.bcLocalDetectedAddr.textContent = addr;
       el.bcLocalDetectedBanner.hidden = false;
       el.bcLocalDetectedBanner.dataset.addr = addr;
@@ -1463,14 +1481,6 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       });
     }
   }
-  el.bcLocalDetectedEnableBtn.addEventListener('click', function(){
-    var base = el.bcLocalDetectedBanner.dataset.addr || '';
-    if(!base) return;
-    el.bcLocalUrl.value = base;
-    el.bcLocalToggle.checked = true;
-    el.bcLocalDetectedBanner.hidden = true;
-    saveBcSettings();
-  });
 
   function setAdvFieldsUI(){
     el.bcAdvFields.hidden = bcSettings.mode !== 'advanced';
