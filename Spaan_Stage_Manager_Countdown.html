@@ -1493,9 +1493,30 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   // same tiny protocol regardless of which backend the internet broadcast
   // above is using. Reuses the same Room ID as the internet broadcast so
   // both sides always describe the same show.
+  //
+  // IMPORTANT: this page is served over https (GitHub Pages). Browsers
+  // flat-out refuse an https page's own fetch() to a plain http:// address
+  // ("mixed content") UNLESS that address is loopback (127.0.0.1/localhost)
+  // -- the one address every browser treats as "this same computer, no
+  // network eavesdropping risk" and exempts from the block. The address in
+  // "Local server address" is deliberately this computer's real network
+  // address (so it's usable in the crew/viewer links and QR codes handed to
+  // OTHER devices -- see buildLocalViewerLink/buildLocalCrewLink below) --
+  // but THIS page talking to the app directly has to go via loopback
+  // instead, or the request is silently blocked (shows up as "Load failed"
+  // / "Failed to fetch", even though the address is completely correct and
+  // the app is running fine). So: always write via loopback, on whatever
+  // port the configured address uses. This only reaches the app when Stage
+  // Manager and the Local Broadcast app are running on the same computer --
+  // which is the supported setup (see the Setup page copy above).
+  function localWriteBase(){
+    var m = /:(\d+)\s*$/.exec(bcSettings.localUrl || '');
+    var port = m ? m[1] : '8765';
+    return 'http://127.0.0.1:' + port;
+  }
   function localTargetUrl(){
     if(!bcSettings.localEnabled || !bcSettings.localUrl || !bcSettings.roomId) return '';
-    return bcSettings.localUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(bcSettings.roomId) + '.json';
+    return localWriteBase() + '/broadcasts/' + encodeURIComponent(bcSettings.roomId) + '.json';
   }
 
   el.bcToggleBtn.addEventListener('click', function(){
@@ -1970,7 +1991,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         el.bcLocalStatusText.classList.remove('bc-error');
       }).catch(function(err){
         el.bcLocalStatusText.hidden = false;
-        el.bcLocalStatusText.textContent = 'Local broadcast error: ' + err.message + ' — is the Local Broadcast Server running on this computer?';
+        el.bcLocalStatusText.textContent = 'Local broadcast error: ' + err.message + ' — make sure the Local Broadcast app is open on THIS computer (the one Stage Manager is open on).';
         el.bcLocalStatusText.classList.add('bc-error');
         el.bcLocalStatusText.classList.remove('bc-live');
       });
