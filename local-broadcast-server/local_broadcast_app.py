@@ -167,9 +167,20 @@ class Handler(BaseHTTPRequestHandler):
     # ---- identification endpoint: lets Stage Manager's Setup page confirm
     # a server on some address is genuinely this app (not just anything
     # else happening to listen on the same port) before offering to enable
-    # local broadcast automatically. ----
+    # local broadcast automatically. Also hands back this machine's actual
+    # LAN IP, since Stage Manager itself only ever reaches this endpoint via
+    # 127.0.0.1/localhost (loopback) -- an address that's meaningless to any
+    # other device on the network. Crew phones need the real address, so
+    # that's what gets used to fill in the Local server address field, not
+    # the loopback address this request happened to arrive on. ----
     def _send_meta(self):
-        self._send_json({'app': APP_ID, 'version': APP_VERSION, 'port': PORT})
+        ips = local_ip_addresses()
+        self._send_json({
+            'app': APP_ID,
+            'version': APP_VERSION,
+            'port': PORT,
+            'lan_ip': ips[0] if ips else None,
+        })
 
     # ---- the Firebase-shaped broadcast API: any path ending in .json ----
 
