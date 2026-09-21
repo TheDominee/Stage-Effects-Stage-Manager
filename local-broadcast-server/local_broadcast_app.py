@@ -442,10 +442,18 @@ class App:
         self._copy(self.addr_label.cget('text'))
 
     def open_stage_manager(self, fname):
-        base = self.last_addr or self.addr_label.cget('text')
-        if not base or 'detecting' in base:
+        # Deliberately 127.0.0.1, NOT self.last_addr (the LAN address used
+        # for crew's QR codes/links). This button always runs on the same
+        # computer as this app, so localhost reaches it just fine -- and
+        # unlike the LAN address, localhost is a browser "secure context",
+        # which is required for Crew Talk's microphone access to work at
+        # all. Opening this button's page at the LAN address instead would
+        # silently break the operator's own mic (Join Voice would do
+        # nothing), even though the countdown/Crew Chat would look fine --
+        # see the matching comment in Stage Manager's own joinVoice().
+        if not self.last_addr or 'detecting' in (self.last_addr or ''):
             return  # address not known yet, e.g. clicked in the first instant after launch
-        webbrowser.open(base.rstrip('/') + '/' + fname)
+        webbrowser.open('http://127.0.0.1:%d/%s' % (self.port, fname))
 
     def _copy(self, text):
         self.root.clipboard_clear()
