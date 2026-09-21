@@ -23,15 +23,26 @@ required. It does two things at once:
 
 HOW TO USE
 ----------
-1. Double-click this app. A window opens with this computer's address and
-   two QR codes (Crew / Viewer).
-2. In Stage Manager's Setup page, open "Local Network Broadcast" and paste
-   in the address shown (or, if Stage Manager is running on this same
-   computer, it will usually find it on its own — a banner appears there
-   offering to turn it on with one click, nothing to type).
+1. Double-click this app. A window opens with this computer's address, two
+   QR codes (Crew / Viewer), and an "Open Stage Manager" button.
+2. Click "Open Stage Manager" (or visit this computer's address shown in
+   the window) rather than the usual github.io link — this is what makes
+   local broadcast work in every browser, Windows or Mac, Safari included
+   (see MIXED CONTENT below for why). Stage Manager then finds this app on
+   its own automatically, nothing to type in Setup.
 3. Hand crew the QR code for the page they need, or use the Copy Link
    buttons. It only works for devices on this same network, but it never
    needs to leave the building.
+
+MIXED CONTENT (why "Open Stage Manager" from here, not the usual link)
+------------------------------------------------------------------------
+The usual Stage Manager link is served over https (GitHub Pages). Browsers
+block an https page's own requests to a plain http:// address unless it's
+loopback (127.0.0.1) — and even that exemption isn't consistent across
+browsers (Chrome/Edge/Firefox honor it, Safari has historically been
+stricter). Opening Stage Manager FROM this app instead means the page
+itself is served over plain http, the same as this app — no https-to-http
+mismatch, so nothing gets blocked, in any browser.
 
 Leave this window open for the duration of the show — closing it stops the
 local broadcast for anyone using it. Nothing here is saved to disk; closing
@@ -46,6 +57,7 @@ import socket
 import sys
 import threading
 import tkinter as tk
+import webbrowser
 from tkinter import font as tkfont
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -137,6 +149,26 @@ def local_ip_addresses():
     except OSError:
         pass
     return sorted(ips)
+
+
+# The Stage Manager control panel(s) this build ships (build.py copies
+# whichever ones exist alongside the Crew/Viewer pages, same as those).
+# Serving these from this app too -- not just the Crew/Viewer pages -- is
+# what lets Stage Manager itself be opened over plain http instead of the
+# usual https github.io link, which is what makes local broadcast actually
+# work in every browser (see the module docstring's MIXED CONTENT section).
+_SM_FILE_LABELS = (
+    ('Stage_Effects_Stage_Manager.html', 'Stage Effects'),
+    ('Spaan_Stage_Manager_Countdown.html', 'Spaan'),
+)
+
+
+def stage_manager_files():
+    """[(label, filename), ...] for whichever Stage Manager build(s) are
+    actually present alongside this script -- so the app only offers to
+    open ones that really exist."""
+    return [(label, fname) for fname, label in _SM_FILE_LABELS
+            if os.path.isfile(os.path.join(SCRIPT_DIR, fname))]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -248,11 +280,30 @@ class Handler(BaseHTTPRequestHandler):
         base = 'http://%s:%d' % (addr, PORT)
         has_crew = os.path.isfile(os.path.join(SCRIPT_DIR, 'Stage_Effects_Crew.html'))
         has_viewer = os.path.isfile(os.path.join(SCRIPT_DIR, 'Stage_Effects_Viewer.html'))
+        sm_files = stage_manager_files()
         links = ''
+        # Absolute (not relative) links throughout: this index page might get
+        # reached via a loopback address (someone typed 127.0.0.1) even though
+        # the useful address for anything handed to another device is the LAN
+        # one -- absolute links mean every button always lands on the right
+        # address regardless of how this page itself was reached.
+        for label, fname in sm_files:
+            links += ('<a class="btn btn-primary" href="%s/%s">Open Stage Manager (%s)</a>'
+                      % (base, fname, label))
         if has_crew:
-            links += '<a class="btn" href="/Stage_Effects_Crew.html">Open Crew Page</a>'
+            links += '<a class="btn" href="%s/Stage_Effects_Crew.html">Open Crew Page</a>' % base
         if has_viewer:
-            links += '<a class="btn" href="/Stage_Effects_Viewer.html">Open Viewer Page</a>'
+            links += '<a class="btn" href="%s/Stage_Effects_Viewer.html">Open Viewer Page</a>' % base
+        # Opening Stage Manager from a link here (rather than the usual
+        # github.io one) is what makes local broadcast work in every browser
+        # -- see the module docstring's MIXED CONTENT section for why.
+        intro = (
+            '<p style="color:#666;margin-bottom:10px;">Open Stage Manager from the button below '
+            '&mdash; it works in every browser this way, Safari included. This computer\'s address:</p>'
+            if sm_files else
+            '<p style="color:#666;margin-bottom:10px;">Enter this address in Stage Manager, '
+            'under Setup &rarr; Local Network Broadcast:</p>'
+        )
         body = (
             '<!doctype html><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width, initial-scale=1">'
@@ -262,15 +313,15 @@ class Handler(BaseHTTPRequestHandler):
             '<h1 style="font-size:20px;margin-bottom:36px;">'
             '<span style="color:#2ecc71;">&#9679;</span> Local Broadcast '
             'is running</h1>'
-            '<p style="color:#666;margin-bottom:10px;">Enter this address in Stage Manager, '
-            'under Setup &rarr; Local Network Broadcast:</p>'
+            '%s'
             '<p style="font-size:22px;font-weight:600;background:#f0f0f0;border-radius:10px;'
             'padding:14px;margin-bottom:36px;word-break:break-all;">%s</p>'
             '<div style="display:flex;flex-direction:column;gap:12px;">%s</div>'
             '<style>.btn{display:block;padding:14px;border-radius:10px;background:#111;'
-            'color:#fff;text-decoration:none;font-weight:600;}</style>'
+            'color:#fff;text-decoration:none;font-weight:600;}'
+            '.btn-primary{background:#FF9500;color:#131F1B;}</style>'
             '</body>'
-        ) % (base, links)
+        ) % (intro, base, links)
         body_bytes = body.encode()
         self.send_response(200)
         self._cors()
@@ -345,6 +396,21 @@ class App:
                               relief='flat', font=small, padx=10, pady=6)
         copy_btn.pack(side='right', padx=12)
 
+        # One button per Stage Manager build actually shipped in this app
+        # (Stage Effects / Spaan) that opens it straight from this computer's
+        # own address -- see the module docstring's MIXED CONTENT section for
+        # why that's what makes local broadcast work in every browser,
+        # instead of sending Erik to the usual https github.io link.
+        self.sm_files = stage_manager_files()
+        if self.sm_files:
+            sm_frame = tk.Frame(root, bg='#131F1B')
+            sm_frame.pack(fill='x', padx=28, pady=(0, 4))
+            for label, fname in self.sm_files:
+                btn_text = 'Open Stage Manager' if len(self.sm_files) == 1 else 'Open Stage Manager (%s)' % label
+                tk.Button(sm_frame, text=btn_text, command=lambda f=fname: self.open_stage_manager(f),
+                          bg='#FF9500', fg='#131F1B', activebackground='#FFB443',
+                          relief='flat', font=small, padx=10, pady=8).pack(fill='x', pady=4)
+
         qr_frame = tk.Frame(root, bg='#131F1B')
         qr_frame.pack(fill='both', expand=True, pady=6)
 
@@ -374,6 +440,12 @@ class App:
 
     def copy_address(self):
         self._copy(self.addr_label.cget('text'))
+
+    def open_stage_manager(self, fname):
+        base = self.last_addr or self.addr_label.cget('text')
+        if not base or 'detecting' in base:
+            return  # address not known yet, e.g. clicked in the first instant after launch
+        webbrowser.open(base.rstrip('/') + '/' + fname)
 
     def _copy(self, text):
         self.root.clipboard_clear()
