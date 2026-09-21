@@ -42,6 +42,10 @@ jobs:
           --name "Stage Effects Local Broadcast"
           --add-data "Stage_Effects_Crew.html;."
           --add-data "Stage_Effects_Viewer.html;."
+          --add-data "Stage_Effects_Stage_Manager.html;."
+          --add-data "Spaan_Crew.html;."
+          --add-data "Spaan_Viewer.html;."
+          --add-data "Spaan_Stage_Manager_Countdown.html;."
           --hidden-import qrcode
           local_broadcast_app.py
 
@@ -69,6 +73,10 @@ jobs:
           --name "Stage Effects Local Broadcast"
           --add-data "Stage_Effects_Crew.html:."
           --add-data "Stage_Effects_Viewer.html:."
+          --add-data "Stage_Effects_Stage_Manager.html:."
+          --add-data "Spaan_Crew.html:."
+          --add-data "Spaan_Viewer.html:."
+          --add-data "Spaan_Stage_Manager_Countdown.html:."
           --hidden-import qrcode
           local_broadcast_app.py
 
@@ -100,8 +108,6 @@ jobs:
             Always up to date with the local-broadcast-server/ folder on
             main. Download the file for your computer below, double-click
             it, done — no Python install, no terminal window.
-
-
             First run: Mac will say the app is from an "unidentified
             developer" — right-click (Control-click) it and choose "Open"
             once. Windows may show a "Windows protected your PC" notice —
