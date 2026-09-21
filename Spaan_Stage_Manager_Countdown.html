@@ -1405,9 +1405,18 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         // Don't stomp a detection (or a manual entry) that already landed
         // first from the other candidate address / while this was in flight.
         if(bcSettings.localEnabled || el.bcLocalUrl.value.trim()) return;
-        el.bcLocalDetectedAddr.textContent = base;
+        // `base` is the loopback address (127.0.0.1/localhost) used to probe
+        // for the app -- that only ever means "this device" and is useless
+        // to crew phones. The app's meta response reports its actual LAN IP
+        // (and the port it's listening on), which is what crew links/QR
+        // codes need to actually reach it from another device on the same
+        // network. Fall back to the loopback base only if the app couldn't
+        // determine its own LAN IP (e.g. offline / no network interface) --
+        // better than nothing, and Erik can still edit it by hand.
+        var addr = meta.lan_ip ? ('http://' + meta.lan_ip + ':' + (meta.port || 8765)) : base;
+        el.bcLocalDetectedAddr.textContent = addr;
         el.bcLocalDetectedBanner.hidden = false;
-        el.bcLocalDetectedBanner.dataset.addr = base;
+        el.bcLocalDetectedBanner.dataset.addr = addr;
       }).catch(function(){ clearTimeout(timer); /* nothing running there -- fine, stay quiet */ });
     });
   }
