@@ -879,7 +879,7 @@
 
       <section class="panel" id="setupBroadcastPanel">
         <div class="broadcast-box" style="margin-top:0;padding-top:0;border-top:none;">
-        <h3>Broadcast to a Public Link <span class="bc-hint">(needs internet &mdash; outside viewers need no login)</span></h3>
+        <h3>Broadcast to a Public Link <span class="bc-hint" id="bcPublicLinkHint">(needs internet &mdash; outside viewers need no login)</span></h3>
         <div class="bc-actions">
           <button class="btn small gold" id="bcToggleBtn">Start Broadcasting</button>
           <button class="btn small ghost" id="bcCopyLinkBtn">Copy Viewer Link</button>
@@ -973,7 +973,7 @@
           </div>
           <div class="bc-row">
             <label>Local server address <span class="bc-optional">(open the Local Broadcast app on this computer &mdash; it shows this address on screen)</span>
-              <input type="text" id="bcLocalUrl" placeholder="http://192.168.1.50:8765" spellcheck="false">
+              <input type="text" id="bcLocalUrl" placeholder="https://192.168.1.50:8765" spellcheck="false">
             </label>
           </div>
           <div class="bc-adv-toggle-row">
@@ -1191,6 +1191,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     bcQrViewerCode: document.getElementById('bcQrViewerCode'),
     bcQrCrewCode: document.getElementById('bcQrCrewCode'),
     bcNewLinkBtn: document.getElementById('bcNewLinkBtn'),
+    bcPublicLinkHint: document.getElementById('bcPublicLinkHint'),
     bcLinkRow: document.getElementById('bcLinkRow'),
     bcLinkDisplay: document.getElementById('bcLinkDisplay'),
     bcLinkDisplayCopyBtn: document.getElementById('bcLinkDisplayCopyBtn'),
@@ -1393,68 +1394,74 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   // never turns broadcasting on by itself; Erik still clicks "Use it".
   function detectLocalBroadcastServer(){
     if(bcSettings.localEnabled || el.bcLocalUrl.value.trim()) return; // already set up
+    if(typeof fetch === 'undefined') return;
+    var offerAddr = function(addr){
+      if(bcSettings.localEnabled || el.bcLocalUrl.value.trim()) return; // a detection/entry already landed first
+      el.bcLocalDetectedAddr.textContent = addr;
+      el.bcLocalDetectedBanner.hidden = false;
+      el.bcLocalDetectedBanner.dataset.addr = addr;
+    };
     // If this page was opened FROM the Local Broadcast app itself (its
     // "Open Stage Manager" button, or its own address typed into a browser)
-    // rather than the usual https github.io link, there's no need to probe
-    // loopback candidates over the network -- the app IS this page's own
-    // origin, so its own /__stage_effects_meta answers instantly. This is
-    // also what makes local broadcast work in every browser, Safari
-    // included: a plain http page talking to another http address isn't
-    // subject to the mixed-content restriction an https page runs into
-    // (see localWriteBase()).
+    // rather than the usual https github.io link, a same-origin request to
+    // its own /__stage_effects_meta answers instantly, no network probing
+    // needed -- try that first, regardless of protocol (the app always
+    // serves itself over https now, same as this page might be, so there's
+    // no longer a reliable protocol difference to key off of).
     //
     // Still worth asking meta for the real LAN IP here rather than just
     // trusting location.origin: the "Open Stage Manager" button opens THIS
-    // page at 127.0.0.1 on purpose (loopback is a browser "secure context",
-    // which Crew Talk's microphone needs -- see joinVoice()), but crew's
-    // own QR codes/links need the real LAN address, not loopback, to be
-    // reachable from their phones. Asking meta keeps both correct
-    // regardless of which address this page itself was opened at.
-    if(location.protocol === 'http:' && location.origin && typeof fetch !== 'undefined'){
-      var offerAddr = function(addr){
-        if(bcSettings.localEnabled || el.bcLocalUrl.value.trim()) return; // a detection/entry already landed first
-        el.bcLocalDetectedAddr.textContent = addr;
-        el.bcLocalDetectedBanner.hidden = false;
-        el.bcLocalDetectedBanner.dataset.addr = addr;
-      };
-      fetch('/__stage_effects_meta').then(function(res){
-        return res.ok ? res.json() : null;
-      }).then(function(meta){
-        offerAddr((meta && meta.lan_ip) ? ('http://' + meta.lan_ip + ':' + (meta.port || 8765)) : location.origin);
-      }).catch(function(){
-        // Even if meta is somehow unreachable, this page's own origin is
-        // guaranteed reachable from itself -- offer that rather than nothing.
-        offerAddr(location.origin);
+    // page at 127.0.0.1 on purpose (a browser "secure context" for Crew
+    // Talk's microphone -- see joinVoice()), but crew's own QR codes/links
+    // need the real LAN address, not loopback, to be reachable from their
+    // phones. Asking meta keeps both correct regardless of which address
+    // this page itself was opened at.
+    fetch('/__stage_effects_meta').then(function(res){
+      return res.ok ? res.json() : null;
+    }).then(function(meta){
+      if(meta && meta.app === 'stage-effects-local-broadcast'){
+        offerAddr(meta.lan_ip ? ('https://' + meta.lan_ip + ':' + (meta.port || 8765)) : location.origin);
+        return;
+      }
+      probeLoopbackCandidates();
+    }).catch(probeLoopbackCandidates);
+
+    // Fallback for the usual github.io case: this page's own origin isn't
+    // the app, so look for it at the loopback addresses/ports either brand
+    // defaults to (Stage Effects 8765, Spaan 8766 -- trying both means
+    // either brand's Stage Manager finds the app whichever port it landed
+    // on, e.g. if both are ever run side by side on the same computer).
+    function probeLoopbackCandidates(){
+      if(typeof AbortController === 'undefined') return;
+      var candidates = [
+        'https://127.0.0.1:8765', 'https://localhost:8765',
+        'https://127.0.0.1:8766', 'https://localhost:8766'
+      ];
+      candidates.forEach(function(base){
+        var ctrl = new AbortController();
+        var timer = setTimeout(function(){ ctrl.abort(); }, 800);
+        fetch(base + '/__stage_effects_meta', { signal: ctrl.signal }).then(function(res){
+          return res.ok ? res.json() : null;
+        }).then(function(meta){
+          clearTimeout(timer);
+          if(!meta || meta.app !== 'stage-effects-local-broadcast') return;
+          // Don't stomp a detection (or a manual entry) that already landed
+          // first from the other candidate address / while this was in flight.
+          if(bcSettings.localEnabled || el.bcLocalUrl.value.trim()) return;
+          // `base` is the loopback address used to probe for the app --
+          // that only ever means "this device" and is useless to crew
+          // phones. The app's meta response reports its actual LAN IP (and
+          // the port it's listening on), which is what crew links/QR codes
+          // need to actually reach it from another device on the same
+          // network. Fall back to the loopback base only if the app
+          // couldn't determine its own LAN IP (e.g. offline / no network
+          // interface) -- better than nothing, and Erik can still edit it
+          // by hand.
+          var addr = meta.lan_ip ? ('https://' + meta.lan_ip + ':' + (meta.port || 8765)) : base;
+          offerAddr(addr);
+        }).catch(function(){ clearTimeout(timer); /* nothing running there -- fine, stay quiet */ });
       });
-      return;
     }
-    if(typeof AbortController === 'undefined' || typeof fetch === 'undefined') return;
-    var candidates = ['http://127.0.0.1:8765', 'http://localhost:8765'];
-    candidates.forEach(function(base){
-      var ctrl = new AbortController();
-      var timer = setTimeout(function(){ ctrl.abort(); }, 800);
-      fetch(base + '/__stage_effects_meta', { signal: ctrl.signal }).then(function(res){
-        return res.ok ? res.json() : null;
-      }).then(function(meta){
-        clearTimeout(timer);
-        if(!meta || meta.app !== 'stage-effects-local-broadcast') return;
-        // Don't stomp a detection (or a manual entry) that already landed
-        // first from the other candidate address / while this was in flight.
-        if(bcSettings.localEnabled || el.bcLocalUrl.value.trim()) return;
-        // `base` is the loopback address (127.0.0.1/localhost) used to probe
-        // for the app -- that only ever means "this device" and is useless
-        // to crew phones. The app's meta response reports its actual LAN IP
-        // (and the port it's listening on), which is what crew links/QR
-        // codes need to actually reach it from another device on the same
-        // network. Fall back to the loopback base only if the app couldn't
-        // determine its own LAN IP (e.g. offline / no network interface) --
-        // better than nothing, and Erik can still edit it by hand.
-        var addr = meta.lan_ip ? ('http://' + meta.lan_ip + ':' + (meta.port || 8765)) : base;
-        el.bcLocalDetectedAddr.textContent = addr;
-        el.bcLocalDetectedBanner.hidden = false;
-        el.bcLocalDetectedBanner.dataset.addr = addr;
-      }).catch(function(){ clearTimeout(timer); /* nothing running there -- fine, stay quiet */ });
-    });
   }
   el.bcLocalDetectedEnableBtn.addEventListener('click', function(){
     var base = el.bcLocalDetectedBanner.dataset.addr || '';
@@ -1530,38 +1537,36 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   // above is using. Reuses the same Room ID as the internet broadcast so
   // both sides always describe the same show.
   //
-  // IMPORTANT: when this page is served over https (the usual github.io
-  // link), browsers flat-out refuse an https page's own fetch() to a plain
-  // http:// address ("mixed content") UNLESS that address is loopback
-  // (127.0.0.1/localhost) -- the one address every browser treats as "this
-  // same computer, no network eavesdropping risk" and exempts from the
-  // block (and even that exemption isn't reliable in every browser -- see
-  // below). The address in "Local server address" is deliberately this
-  // computer's real network address (so it's usable in the crew/viewer
-  // links and QR codes handed to OTHER devices -- see
-  // buildLocalViewerLink/buildLocalCrewLink below) -- but an https page
-  // talking to the app directly has to go via loopback instead, or the
-  // request is silently blocked (shows up as "Load failed" / "Failed to
-  // fetch", even though the address is completely correct and the app is
-  // running fine).
-  //
-  // When this page is instead opened directly from the Local Broadcast app
-  // (its "Open Stage Manager" button, or its own address typed into a
-  // browser -- see the app's own instructions), it's served over plain
-  // http, same as the app itself -- no https-to-http mismatch, so nothing
-  // is blocked, in ANY browser (this is what makes it reliably work in
-  // Safari too, not just Chrome/Edge/Firefox, and on Windows the same as
-  // Mac -- the restriction was always about the page's own protocol, never
-  // the operating system). In that case just talk to whichever address is
-  // configured (or, if none is, this page's own origin -- since being
-  // loaded over http here means we ARE being served by the app).
+  // The Local Broadcast app now always serves itself over https (a
+  // self-signed certificate it generates on this computer -- see that
+  // app's own docstring), specifically so a browser will expose the
+  // microphone on it at all (Crew Talk needs a "secure context": https, or
+  // loopback). That also means there's no more https-page-talking-to-http
+  // "mixed content" problem to route around -- but there IS still a
+  // certificate *trust* one: a device only trusts that self-signed
+  // certificate for whichever address it actually visited and clicked
+  // through the one-time warning on. When this page is opened directly
+  // FROM the Local Broadcast app (its "Open Stage Manager" button, or its
+  // own address typed into a browser), it's already being served from
+  // that same trusted address -- so just keep talking to it. When this
+  // page is instead the usual github.io one, it's a different origin
+  // entirely and has never established any trust with the app's LAN
+  // address -- but "Open Stage Manager" always opens at 127.0.0.1
+  // specifically (see that app's open_stage_manager()), so route there
+  // instead, reusing whatever trust was established the same way.
+  function servedByLocalBroadcastApp(){
+    if(!bcSettings.localUrl) return false;
+    try{
+      return location.origin === new URL(bcSettings.localUrl).origin;
+    }catch(e){ return false; }
+  }
   function localWriteBase(){
-    if(location.protocol !== 'https:'){
-      return (bcSettings.localUrl || location.origin).replace(/\/+$/,'');
+    if(servedByLocalBroadcastApp()){
+      return location.origin;
     }
     var m = /:(\d+)\s*$/.exec(bcSettings.localUrl || '');
     var port = m ? m[1] : '8765';
-    return 'http://127.0.0.1:' + port;
+    return 'https://127.0.0.1:' + port;
   }
   function localTargetUrl(){
     if(!bcSettings.localEnabled || !bcSettings.localUrl || !bcSettings.roomId) return '';
@@ -1613,7 +1618,48 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     publishTurnConfig();
   });
 
+  // Appended to a Local Network Broadcast link whenever an internet (advanced
+  // Firebase) broadcast is also configured, so that ONE link automatically
+  // falls back to the internet the instant the local network stops
+  // answering -- e.g. a phone walks out of the venue Wi-Fi -- and switches
+  // back the instant it's reachable again. See viewer_template.html's
+  // failover block for the client-side half of this. Omitted entirely when
+  // there's no internet broadcast configured (or it's the free "auto"
+  // backend, which doesn't speak the same room/path shape) -- the local
+  // link then just works exactly as it always has, local-only.
+  function inetFallbackParam(){
+    if(bcSettings.mode !== 'advanced' || !bcSettings.dbUrl || !bcSettings.roomId) return '';
+    return '&inet=' + encodeURIComponent(bcSettings.dbUrl);
+  }
+
+  // Local Network Broadcast links — the Local Broadcast Server serves the
+  // Viewer/Crew pages itself at its own address, so unlike the internet
+  // links above there's no separately-hosted page to point at: the address
+  // typed into "Local server address" is both the API and the page host.
+  function buildLocalViewerLink(){
+    if(!bcSettings.localUrl || !bcSettings.roomId) return null;
+    var base = bcSettings.localUrl.replace(/\/+$/,'');
+    return base + '/Spaan_Viewer.html?db=' + encodeURIComponent(base) + '&room=' + encodeURIComponent(bcSettings.roomId) + inetFallbackParam();
+  }
+  function buildLocalCrewLink(){
+    if(!bcSettings.localUrl || !bcSettings.roomId) return null;
+    var base = bcSettings.localUrl.replace(/\/+$/,'');
+    return base + '/Spaan_Crew.html?db=' + encodeURIComponent(base) + '&room=' + encodeURIComponent(bcSettings.roomId) + inetFallbackParam();
+  }
+
+  // The ONE link Erik actually hands out for each role. When Local Network
+  // Broadcast is turned on (the "Also broadcast to the local network"
+  // checkbox), this becomes the local link above -- already carrying the
+  // internet fallback baked in -- so there's a single Crew link and a
+  // single Viewer link that quietly do the right thing whether the venue
+  // has internet, only local Wi-Fi, or someone briefly has neither. With
+  // Local Network Broadcast off, this is unchanged from before: the plain
+  // internet link.
   function buildViewerLink(){
+    if(bcSettings.localEnabled && bcSettings.localUrl && bcSettings.roomId){
+      var localLink = buildLocalViewerLink();
+      if(localLink) return localLink;
+    }
     if(!bcSettings.viewerUrl) return null;
     var base = bcSettings.viewerUrl.replace(/\?.*$/, '');
     if(bcSettings.mode === 'advanced'){
@@ -1629,6 +1675,10 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   // way. Two-way chat on that page only works with the "advanced" (db/room)
   // link; a "blob" (auto mode) crew link still shows the timer, just no chat.
   function buildCrewLink(){
+    if(bcSettings.localEnabled && bcSettings.localUrl && bcSettings.roomId){
+      var localCrewLink = buildLocalCrewLink();
+      if(localCrewLink) return localCrewLink;
+    }
     if(!bcSettings.crewViewerUrl) return null;
     var base = bcSettings.crewViewerUrl.replace(/\?.*$/, '');
     if(bcSettings.mode === 'advanced'){
@@ -1639,26 +1689,17 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     return base + '?blob=' + encodeURIComponent(bcSettings.blobUrl);
   }
 
-  // Local Network Broadcast links — the Local Broadcast Server serves the
-  // Viewer/Crew pages itself at its own address, so unlike the internet
-  // links above there's no separately-hosted page to point at: the address
-  // typed into "Local server address" is both the API and the page host.
-  function buildLocalViewerLink(){
-    if(!bcSettings.localUrl || !bcSettings.roomId) return null;
-    var base = bcSettings.localUrl.replace(/\/+$/,'');
-    return base + '/Spaan_Viewer.html?db=' + encodeURIComponent(base) + '&room=' + encodeURIComponent(bcSettings.roomId);
-  }
-  function buildLocalCrewLink(){
-    if(!bcSettings.localUrl || !bcSettings.roomId) return null;
-    var base = bcSettings.localUrl.replace(/\/+$/,'');
-    return base + '/Spaan_Crew.html?db=' + encodeURIComponent(base) + '&room=' + encodeURIComponent(bcSettings.roomId);
-  }
-
   // Keeps the visible, click-to-select link box in sync with whatever this
   // computer's current broadcast room is — this is what makes it quick to grab
   // and share the *right* link when several computers are each broadcasting
   // their own show, since every computer's box always shows its own link.
   function updateLinkDisplay(){
+    var usingUnifiedLocalLink = !!(bcSettings.localEnabled && bcSettings.localUrl && bcSettings.roomId && buildLocalViewerLink());
+    if(el.bcPublicLinkHint){
+      el.bcPublicLinkHint.textContent = usingUnifiedLocalLink
+        ? '(works over this venue’s Wi-Fi, falls back to the internet automatically — outside viewers need no login)'
+        : '(needs internet — outside viewers need no login)';
+    }
     var link = buildViewerLink();
     if(link){
       el.bcLinkRow.hidden = false;
@@ -2951,13 +2992,13 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       return;
     }
     // Same secure-context restriction as the Crew/Viewer pages (see the
-    // matching comment there): opening THIS control panel at Local
-    // Broadcast's real address (the "Open Stage Manager" button, or its own
-    // QR/address) is plain http on a non-localhost address, so the
-    // microphone is unavailable here even though everything else (running
-    // the show, Crew Chat, broadcasting) works fine.
+    // matching comment there). The Local Broadcast app now always serves
+    // itself over https (with a self-signed certificate), which is itself
+    // a secure context -- so this should no longer come up for anyone on a
+    // current version of the app. It's kept as a safety net for an older,
+    // plain-http build of the app still running somewhere.
     if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-      alert("Can't use the microphone here — browsers only allow that over a secure (https) connection, or on this same computer's own localhost address. Crew Talk voice needs either the usual internet broadcast, or opening this panel at http://127.0.0.1:<port> instead of the LAN address, on the computer actually running Local Broadcast.");
+      alert("Can't use the microphone here — browsers only allow that over a secure (https) connection, or on this same computer's own localhost address. If you're seeing this on a Local Broadcast link, make sure you have the latest Local Broadcast app (older versions served plain http, which blocks the microphone) — download the newest one from the link in the Local Network Broadcast section below.");
       return;
     }
     navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream){
