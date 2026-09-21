@@ -575,7 +575,7 @@
 <div id="app">
 
   <div id="splashScreen" title="Click to open the show" role="button" tabindex="0" aria-label="Open the show">
-    <div class="logo-plate"><img class="brand-logo-img" alt="Stage Effects Group"></div>
+    <div class="logo-plate"><img class="brand-logo-img" alt="Spaan"></div>
     <div class="splash-show-info">
       <div class="splash-show-name" id="splashShowName">Untitled Show</div>
       <div class="splash-show-meta" id="splashShowMeta"></div>
@@ -591,10 +591,10 @@
   <div id="showPage" hidden>
 
   <header class="topbar">
-    <div class="logo-plate"><img class="brand-logo-img" alt="Stage Effects Group"></div>
+    <div class="logo-plate"><img class="brand-logo-img" alt="Spaan"></div>
     <div class="title-block">
       <span id="showNameDisplay" class="show-name-display">Untitled Show</span>
-      <small>Stage Effects Stage Manager</small>
+      <small>Spaan Stage Manager</small>
     </div>
     <div class="spacer"></div>
     <div class="clock-mini" id="clockMini">--:--:--</div>
@@ -794,7 +794,7 @@
     <kbd>Space</kbd> start/pause &nbsp; <kbd>T</kbd> hold to talk (Crew Talk voice) &nbsp; <kbd>R</kbd> reset &nbsp; <kbd>F</kbd> fullscreen this window &nbsp; <kbd>&larr;</kbd><kbd>&rarr;</kbd> previous/next cue &nbsp;
     Drag the Extended Display window onto your second screen, then press <kbd>F11</kbd> for true full screen.
     <div class="footer-about"><kbd>1</kbd>-<kbd>5</kbd> message presets (5 MIN/PLACES/STANDBY/GO/HOLD) &nbsp; <kbd>6</kbd> clear message &nbsp; <kbd>7</kbd> flash toggle &nbsp; <kbd>8</kbd> open extended display &nbsp; <kbd>9</kbd> test alarm &nbsp; <kbd>0</kbd> save show &mdash; handy if you're driving this from a Stream Deck or other macro pad: map each button to the matching key with its plain "Hotkey" action, no plugin needed. Just make sure this browser tab is the focused window when a button is pressed.</div>
-    <div class="footer-about">Stage Manager Countdown Timer &mdash; built for Stage Effects Group (Pty) Ltd. Runs entirely offline in this browser tab.</div>
+    <div class="footer-about">Stage Manager Countdown Timer &mdash; built for Spaan. Runs entirely offline in this browser tab.</div>
     <div class="footer-about">To share a broadcast: the link is already set up &mdash; just click Start Broadcasting, then copy the link that appears just below the buttons and send it (WhatsApp, email, whatever's easiest). Viewers just open it, no login or app needed. Every field in that box is still editable if you want your own link instead. Running several shows on different computers? Each one generates its own separate link automatically, so just copy the one shown on that computer.</div>
     <div class="footer-about">Save Show / Load Show (top of the Running Order list) now saves your cue list as an Excel (.xlsx) file &mdash; open it, edit it, or hand it to someone else, then Load Show it back in. Load Show still opens older .json show files too, and can open a running order built from scratch in Excel (a "Type"/"Name" table with Minutes/Seconds columns). Loading always replaces the current list, so save first if you want to keep it.</div>
   </footer>
@@ -803,10 +803,10 @@
 
   <div id="setupPage" hidden>
     <header class="topbar">
-      <div class="logo-plate"><img class="brand-logo-img" alt="Stage Effects Group"></div>
+      <div class="logo-plate"><img class="brand-logo-img" alt="Spaan"></div>
       <div class="title-block">
         <span class="show-name-display">Setup</span>
-        <small>Stage Effects Stage Manager</small>
+        <small>Spaan Stage Manager</small>
       </div>
       <div class="spacer"></div>
       <button class="btn gold" id="backToShowBtn">&#8592; Back to Show</button>
@@ -2111,6 +2111,61 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   var smPeerId = 'sm-' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
   var crewRoster = [];
   var voiceRoster = []; // [{id, name}] — viewers who currently have Crew Talk voice joined
+
+  // ---- dual local+internet reach for anything Crew Talk (PTT) depends on ----
+  // A Crew/Viewer page always talks through exactly ONE backend at a time --
+  // local while it's reachable, the internet the instant it's not (see
+  // viewer_template.html's failover block). Stage Manager is assumed to
+  // always be on the internet, but it's simultaneously serving crew who
+  // might each be on EITHER backend at any given moment, and previously
+  // only ever wrote/read the internet one -- meaning viewer presence, the
+  // voice roster, and the whole WebRTC handshake (offers/answers/ICE
+  // candidates/mute) were invisible to Stage Manager for anyone currently
+  // on the venue's local Wi-Fi, i.e. Crew Talk silently didn't work for the
+  // normal/preferred case. Fixed by having Stage Manager write to AND read
+  // from both backends for all of this -- the same "always try both, no
+  // need to guess which one's right" approach broadcastState() already
+  // uses for the countdown itself, just extended to voice.
+  function voiceBackendBases(){
+    var bases = [];
+    if(bcSettings.mode === 'advanced' && bcSettings.dbUrl && bcSettings.roomId){
+      bases.push(bcSettings.dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(bcSettings.roomId));
+    }
+    if(bcSettings.localEnabled && bcSettings.localUrl && bcSettings.roomId){
+      bases.push(localWriteBase() + '/broadcasts/' + encodeURIComponent(bcSettings.roomId));
+    }
+    return bases;
+  }
+  // Fire-and-forget write to every reachable backend at once -- a crew
+  // member's client only ever reads from whichever ONE it's currently on,
+  // so this just makes sure whichever one that is, the data's there.
+  function dualPut(pathSuffix, body){
+    voiceBackendBases().forEach(function(base){
+      fetch(base + pathSuffix, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) }).catch(function(){});
+    });
+  }
+  // Reads every reachable backend at once and hands back whichever came
+  // back OK (each as its own parsed object) plus whether at least one
+  // succeeded -- callers merge them, since a given crew member's own data
+  // only ever exists on the one backend their own client is using, not both.
+  function dualFetchAll(pathSuffix, cb){
+    var bases = voiceBackendBases();
+    if(!bases.length){ cb([], false); return; }
+    Promise.all(bases.map(function(base){
+      return fetch(base + pathSuffix, { cache: 'no-store' }).then(function(r){
+        if(!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function(v){ return { ok: true, value: v }; }).catch(function(){ return { ok: false }; });
+    })).then(function(settled){
+      var oks = [];
+      var anyOk = false;
+      settled.forEach(function(s){
+        if(s.ok){ anyOk = true; if(s.value && typeof s.value === 'object') oks.push(s.value); }
+      });
+      cb(oks, anyOk);
+    });
+  }
+
   function pollViewerCount(){
     if(bcSettings.mode !== 'advanced' || !bcSettings.enabled || !bcSettings.dbUrl || !bcSettings.roomId){
       el.bcViewerCount.hidden = true;
@@ -2119,35 +2174,33 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       if(typeof onVoiceRosterChange === 'function') onVoiceRosterChange();
       return;
     }
-    var url = bcSettings.dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(bcSettings.roomId) + '/viewers.json';
-    fetch(url, { cache: 'no-store' }).then(function(r){
-      if(!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    }).then(function(data){
+    dualFetchAll('/viewers.json', function(results, anyOk){
+      if(!anyOk){
+        el.bcViewerCount.hidden = false;
+        el.bcViewerCount.textContent = '👀 viewer count unavailable';
+        return;
+      }
+      var merged = {};
+      results.forEach(function(d){ Object.keys(d || {}).forEach(function(k){ merged[k] = d[k]; }); });
       var now = Date.now();
       var count = 0;
       var roster = [];
       var vRoster = [];
-      if(data){
-        Object.keys(data).forEach(function(k){
-          if(k === smPeerId) return; // never list ourselves
-          var v = data[k];
-          if(v && typeof v.lastSeen === 'number' && (now - v.lastSeen) < 20000){
-            count++;
-            var name = v.name ? String(v.name).trim() : '';
-            if(name && roster.indexOf(name) === -1) roster.push(name);
-            if(v.voiceReady && name) vRoster.push({ id: k, name: name });
-          }
-        });
-      }
+      Object.keys(merged).forEach(function(k){
+        if(k === smPeerId) return; // never list ourselves
+        var v = merged[k];
+        if(v && typeof v.lastSeen === 'number' && (now - v.lastSeen) < 20000){
+          count++;
+          var name = v.name ? String(v.name).trim() : '';
+          if(name && roster.indexOf(name) === -1) roster.push(name);
+          if(v.voiceReady && name) vRoster.push({ id: k, name: name });
+        }
+      });
       crewRoster = roster;
       voiceRoster = vRoster;
       if(typeof onVoiceRosterChange === 'function') onVoiceRosterChange();
       el.bcViewerCount.hidden = false;
       el.bcViewerCount.textContent = count === 1 ? '👀 1 viewer connected' : ('👀 ' + count + ' viewers connected');
-    }).catch(function(){
-      el.bcViewerCount.hidden = false;
-      el.bcViewerCount.textContent = '👀 viewer count unavailable';
     });
   }
   setInterval(pollViewerCount, 5000);
@@ -2493,9 +2546,10 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   }
   document.addEventListener('pointerdown', unlockVoiceAudio, { passive: true });
 
-  function voiceSigUrl(forPeerId){
-    if(bcSettings.mode !== 'advanced' || !bcSettings.dbUrl || !bcSettings.roomId) return '';
-    return bcSettings.dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(bcSettings.roomId) + '/voiceSig/' + encodeURIComponent(forPeerId);
+  // Path suffix (not a full URL -- see dualPut/dualFetchAll above) for one
+  // peer's voice signaling mailbox.
+  function voiceSigPath(forPeerId, sub){
+    return '/voiceSig/' + encodeURIComponent(forPeerId) + (sub || '');
   }
 
   // Cuts a specific crew member's mic RIGHT NOW over the same signaling
@@ -2504,11 +2558,10 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   // one-shot "stop the current transmission" command, not a standing block:
   // that crew member sees why, and can just press Push To Talk (or the lock
   // button) again normally afterwards -- nobody gets silenced with no way
-  // back.
+  // back. Sent to both backends (dualPut) since it's not known which one
+  // that crew member's own client is currently reading from.
   function muteCrewMember(peerId, name, btnEl){
-    var url = voiceSigUrl(peerId) + '/muteCmd.json';
-    if(!url) return;
-    fetch(url, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ ts: Date.now(), by: 'Stage Manager' }) }).catch(function(){});
+    dualPut(voiceSigPath(peerId, '/muteCmd.json'), { ts: Date.now(), by: 'Stage Manager' });
     if(btnEl){
       btnEl.classList.add('muted-flash');
       setTimeout(function(){ btnEl.classList.remove('muted-flash'); }, 1500);
@@ -2516,13 +2569,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   }
 
   function sendVoicePresence(ready){
-    if(bcSettings.mode !== 'advanced' || !bcSettings.dbUrl || !bcSettings.roomId) return;
-    var url = bcSettings.dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(bcSettings.roomId) + '/viewers/' + encodeURIComponent(smPeerId) + '.json';
-    fetch(url, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lastSeen: Date.now(), name: 'Stage Manager', voiceReady: !!ready })
-    }).catch(function(){});
+    dualPut('/viewers/' + encodeURIComponent(smPeerId) + '.json', { lastSeen: Date.now(), name: 'Stage Manager', voiceReady: !!ready });
   }
 
   function ensureVoiceAudioCtx(){
@@ -2587,8 +2634,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     }
     pc.onicecandidate = function(ev){
       if(!ev.candidate) return;
-      var url = voiceSigUrl(peerId) + '/candidates/' + encodeURIComponent(smPeerId) + '/' + genMsgId() + '.json';
-      fetch(url, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(ev.candidate.toJSON()) }).catch(function(){});
+      dualPut(voiceSigPath(peerId, '/candidates/' + encodeURIComponent(smPeerId) + '/' + genMsgId() + '.json'), ev.candidate.toJSON());
     };
     pc.ontrack = function(ev){
       var audioEl = document.createElement('audio');
@@ -2622,8 +2668,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         pc.createOffer().then(function(offer){
           return pc.setLocalDescription(offer);
         }).then(function(){
-          var url = voiceSigUrl(peerId) + '/offers/' + encodeURIComponent(smPeerId) + '.json';
-          return fetch(url, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type, ts: Date.now() }) });
+          dualPut(voiceSigPath(peerId, '/offers/' + encodeURIComponent(smPeerId) + '.json'), { sdp: pc.localDescription.sdp, type: pc.localDescription.type, ts: Date.now() });
         }).catch(function(){});
       };
     }
@@ -2641,13 +2686,41 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     renderVoiceTargets();
   }
 
+  // Merges one peer's voice-signaling mailbox as read back from potentially
+  // BOTH backends at once (a crew member on local writes their offer/answer/
+  // candidates to the local mailbox; a crew member on internet writes to the
+  // internet one -- the Stage Manager doesn't know which, so it reads both
+  // and merges). offers/answers are keyed one level deep by sender id;
+  // candidates are two levels deep (sender id, then candidate id), so those
+  // need their own merge rather than a flat Object.assign.
+  function mergeVoiceSigPayloads(list){
+    var merged = { offers: {}, answers: {}, candidates: {} };
+    list.forEach(function(data){
+      if(!data) return;
+      ['offers', 'answers'].forEach(function(key){
+        var sub = data[key];
+        if(sub && typeof sub === 'object'){
+          Object.keys(sub).forEach(function(fromId){ merged[key][fromId] = sub[fromId]; });
+        }
+      });
+      var cands = data.candidates;
+      if(cands && typeof cands === 'object'){
+        Object.keys(cands).forEach(function(fromId){
+          if(!merged.candidates[fromId]) merged.candidates[fromId] = {};
+          var fromCands = cands[fromId] || {};
+          Object.keys(fromCands).forEach(function(cid){ merged.candidates[fromId][cid] = fromCands[cid]; });
+        });
+      }
+    });
+    return merged;
+  }
+
   function pollVoiceSignaling(){
     if(!voiceJoined) return;
-    var url = voiceSigUrl(smPeerId) + '.json';
-    if(!url) return;
-    fetch(url, { cache: 'no-store' }).then(function(r){ return r.ok ? r.json() : null; }).then(function(data){
-      if(!data) return;
-      Object.keys(data.offers || {}).forEach(function(fromId){
+    dualFetchAll(voiceSigPath(smPeerId, '.json'), function(results){
+      if(!results.length) return;
+      var data = mergeVoiceSigPayloads(results);
+      Object.keys(data.offers).forEach(function(fromId){
         var o = data.offers[fromId];
         if(!o || !o.sdp) return;
         var entry = voicePeers[fromId];
@@ -2662,11 +2735,10 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         }).then(function(answer){
           return entry.pc.setLocalDescription(answer);
         }).then(function(){
-          var aurl = voiceSigUrl(fromId) + '/answers/' + encodeURIComponent(smPeerId) + '.json';
-          return fetch(aurl, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ sdp: entry.pc.localDescription.sdp, type: entry.pc.localDescription.type, ts: Date.now() }) });
+          dualPut(voiceSigPath(fromId, '/answers/' + encodeURIComponent(smPeerId) + '.json'), { sdp: entry.pc.localDescription.sdp, type: entry.pc.localDescription.type, ts: Date.now() });
         }).catch(function(){});
       });
-      Object.keys(data.answers || {}).forEach(function(fromId){
+      Object.keys(data.answers).forEach(function(fromId){
         var a = data.answers[fromId];
         var entry = voicePeers[fromId];
         if(!a || !entry || entry.answered) return;
@@ -2674,7 +2746,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         entry.answered = true;
         entry.pc.setRemoteDescription({ type: a.type, sdp: a.sdp }).catch(function(){});
       });
-      Object.keys(data.candidates || {}).forEach(function(fromId){
+      Object.keys(data.candidates).forEach(function(fromId){
         var entry = voicePeers[fromId];
         if(!entry) return;
         var cands = data.candidates[fromId] || {};
@@ -2684,7 +2756,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
           entry.pc.addIceCandidate(cands[cid]).catch(function(){});
         });
       });
-    }).catch(function(){});
+    });
   }
 
   // ===== SYNC BLOCK START: voiceGroups =====
@@ -2702,35 +2774,37 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   var voiceGroupsExpanded = {}; // groupId -> true while its "add names" row is open (double-click a group to toggle)
   var voiceGroupsGen = 0; // bumped on every local edit, so a slow/in-flight poll response can't clobber a newer local change
 
-  function voiceGroupsUrl(){
-    if(bcSettings.mode !== 'advanced' || !bcSettings.dbUrl || !bcSettings.roomId) return '';
-    return bcSettings.dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(bcSettings.roomId) + '/voiceGroups.json';
-  }
   function genGroupId(){
     return 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
   }
+  // Talk Groups now read/write BOTH backends too (same reasoning as the
+  // voice signaling above) -- otherwise a group the SM creates would be
+  // invisible to a crew member currently on the local backend, and a
+  // membership change made from a local-backend crew member's own Crew page
+  // would never reach the SM. Groups are a flat groupId->{...} dict, so a
+  // shallow merge across whatever backends answered is enough (no nested
+  // sub-merge needed like voiceSig's offers/answers/candidates).
   function pollVoiceGroups(){
-    var url = voiceGroupsUrl();
-    if(!url || !bcSettings.enabled) return;
+    if(!bcSettings.enabled) return;
     var genAtRequest = voiceGroupsGen;
-    fetch(url, { cache: 'no-store' }).then(function(r){
-      if(!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    }).then(function(data){
+    dualFetchAll('/voiceGroups.json', function(results){
+      if(!results.length) return;
       if(genAtRequest !== voiceGroupsGen) return; // a local edit happened while this was in flight -- our copy is newer, don't overwrite it
-      voiceGroups = data || {};
+      var merged = {};
+      results.forEach(function(data){
+        if(data && typeof data === 'object') Object.assign(merged, data);
+      });
+      voiceGroups = merged;
       voiceGroupsOrder = Object.keys(voiceGroups).sort(function(a,b){
         return (voiceGroups[a].createdAt||0) - (voiceGroups[b].createdAt||0);
       });
       renderVoiceGroups();
       renderVoiceTargets();
-    }).catch(function(){ /* keep last-known groups showing, try again next poll */ });
+    });
   }
   function saveVoiceGroups(){
     voiceGroupsGen++;
-    var url = voiceGroupsUrl();
-    if(!url) return;
-    fetch(url, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(voiceGroups) }).catch(function(){});
+    dualPut('/voiceGroups.json', voiceGroups);
     renderVoiceGroups();
     renderVoiceTargets();
   }
@@ -3302,6 +3376,31 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     saveJSON('sm_show_doors', el.showDoors.value);
     saveJSON('sm_show_start', el.showStartTime.value);
     saveJSON('sm_show_curfew', el.showCurfew.value);
+    saveRunningState();
+  }
+
+  // A crashed/reloaded tab (accidental refresh, browser crash, laptop sleep
+  // killing the tab, power blip) used to come back with the running order
+  // intact but the ACTIVE timer at zero and nothing loaded -- the operator
+  // had to notice, figure out which cue they were on, and restart it by
+  // hand mid-show. This snapshot (which cue, how much time was left, was it
+  // running, when it was saved) is what restoreRunningState() near the
+  // bottom of this file uses to pick the show back up automatically. Called
+  // every tick (so a hard crash is at most ~1s stale) and on every
+  // start/pause/reset/cue-load so a deliberate action is captured instantly
+  // too, plus inside persist() so beforeunload/other saves carry it along.
+  function saveRunningState(){
+    saveJSON('sm_running_state', {
+      cueId: currentCueId,
+      remaining: remaining,
+      running: running,
+      countdownTargetAt: countdownTargetAt,
+      countMode: countMode,
+      lastLoadedDuration: lastLoadedDuration,
+      upAlertAt: upAlertAt,
+      upRunStarted: upRunStarted,
+      savedAt: Date.now()
+    });
   }
 
   /* ---------------- cue list rendering ---------------- */
@@ -3742,6 +3841,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     updateTimeDisplay();
     renderCueList();
     updatePresenter();
+    saveRunningState();
   }
 
   function setBadge(type){
@@ -3948,6 +4048,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     tickHandle = setInterval(tick, 1000);
     updatePresenter();
     signalTimecodeStart(isFreshCueStart);
+    saveRunningState();
   }
 
   function pauseTimer(){
@@ -3957,6 +4058,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     clearInterval(tickHandle);
     updatePresenter();
     signalTimecodePause();
+    saveRunningState();
   }
 
   function stopTimerInternal(clearAlarm){
@@ -3965,6 +4067,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     el.startBtn.disabled = false;
     el.pauseBtn.disabled = true;
     if(clearAlarm !== false) alarmActive = false;
+    saveRunningState();
   }
 
   function resetTimer(){
@@ -3991,6 +4094,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     updateTimeDisplay();
     updatePresenter();
     signalTimecodeReset();
+    saveRunningState();
   }
 
   function applyManualSetTime(){
@@ -4109,6 +4213,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       }
     }
     updatePresenter();
+    saveRunningState();
   }
 
   function triggerAlarm(){
@@ -4215,7 +4320,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     '#stage.alarm #messageSubTimeWrap{border-top-color:rgba(255,255,255,.4);}'+
     '</style></head><body>'+
     '<div id="stage">'+
-      '<div id="logoCorner"><img src="'+(presenterTheme === 'light' ? LOGO_SRC_LIGHT : LOGO_SRC_DARK)+'" alt="Stage Effects Group"></div>'+
+      '<div id="logoCorner"><img src="'+(presenterTheme === 'light' ? LOGO_SRC_LIGHT : LOGO_SRC_DARK)+'" alt="Spaan"></div>'+
       '<div id="clock">--:--:--</div>'+
       '<button id="presenterThemeToggle" title="Switch day/night display">'+(presenterTheme==='light' ? '&#127769;' : '&#9728;')+'</button>'+
       '<div id="showLabel"></div>'+
@@ -5253,6 +5358,97 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       { id: uid(), type: 'performance', name: 'Headline Act', duration: 3000 }
     ];
   }
+
+  /* ---------------- crash/reload recovery ---------------- */
+  // Beyond this gap, a saved "still running" snapshot is more likely a
+  // deliberate reopen (next day, after an interval) than a crash mid-cue --
+  // it's restored (so the right cue/time still show) but left paused
+  // instead of silently ticking away unattended after, say, an overnight gap.
+  var RECOVERY_AUTO_RESUME_MS = 20 * 60 * 1000; // 20 minutes
+  function showRecoveryBanner(autoResumed, gapMs){
+    var secs = Math.max(0, Math.round(gapMs / 1000));
+    var gapText = secs < 90 ? (secs + 's') : (Math.round(secs / 60) + 'm');
+    var msg = 'Recovered after a reload (gap: ' + gapText + ') — ' +
+      (autoResumed ? 'timer resumed automatically.' : 'press Start when ready.');
+    var b = document.createElement('div');
+    b.setAttribute('role', 'status');
+    b.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:99999;'+
+      'background:#B8935A;color:#13201b;font-weight:700;font-size:14px;line-height:1.4;'+
+      'padding:10px 36px 10px 16px;border-radius:8px;box-shadow:0 4px 18px rgba(0,0,0,.45);'+
+      'font-family:inherit;cursor:pointer;max-width:90vw;';
+    b.textContent = msg;
+    var closeX = document.createElement('span');
+    closeX.textContent = '✕';
+    closeX.style.cssText = 'position:absolute;top:8px;right:12px;opacity:.7;';
+    b.style.position = 'fixed';
+    b.appendChild(closeX);
+    b.addEventListener('click', function(){ if(b.parentNode) b.parentNode.removeChild(b); });
+    document.body.appendChild(b);
+    setTimeout(function(){ if(b.parentNode) b.parentNode.removeChild(b); }, 20000);
+  }
+  (function restoreRunningState(){
+    var saved = loadJSON('sm_running_state', null);
+    if(!saved || !saved.savedAt) return;
+    // Ignore a stale snapshot pointing at a cue that no longer exists (e.g.
+    // "New Show" ran since, or the cue was deleted) -- nothing sensible to
+    // recover into.
+    if(saved.cueId && findCueIndex(saved.cueId) < 0) return;
+    var gapMs = Math.max(0, Date.now() - saved.savedAt);
+
+    currentCueId = saved.cueId || null;
+    countMode = saved.countMode === 'up' ? 'up' : 'down';
+    lastLoadedDuration = saved.lastLoadedDuration || 0;
+    upAlertAt = saved.upAlertAt || 0;
+    upRunStarted = !!saved.upRunStarted;
+    countdownTargetAt = (typeof saved.countdownTargetAt === 'number') ? saved.countdownTargetAt : null;
+    remaining = typeof saved.remaining === 'number' ? saved.remaining : 0;
+
+    var wasRunning = !!saved.running;
+    if(wasRunning && countdownTargetAt === null){
+      // Ordinary countdown/count-up -- account for real time that passed
+      // with nothing ticking, same direction tick() already decrements in.
+      // (countdownTargetAt needs no adjustment: it's an absolute clock
+      // time, so tick()/updateTimeDisplay() recompute "remaining" from it
+      // fresh regardless of how long the gap was.)
+      remaining -= Math.round(gapMs / 1000);
+    }
+
+    if(currentCueId){
+      var idx = findCueIndex(currentCueId);
+      if(idx >= 0) setBadge(cueList[idx].type);
+    }
+    if(el.countModeSeg){
+      Array.prototype.forEach.call(el.countModeSeg.querySelectorAll('button'), function(b){
+        b.classList.toggle('active', b.getAttribute('data-mode') === countMode);
+      });
+    }
+    if(el.upAlertLabel && el.upAlertRow){
+      var showUpAlert = countMode === 'up';
+      el.upAlertLabel.hidden = !showUpAlert;
+      el.upAlertRow.hidden = !showUpAlert;
+    }
+    if(el.setTimeLabel && el.setTimeRow){
+      var showSetTime = countMode !== 'up';
+      el.setTimeLabel.hidden = !showSetTime;
+      el.setTimeRow.hidden = !showSetTime;
+    }
+
+    var autoResume = wasRunning && gapMs < RECOVERY_AUTO_RESUME_MS;
+    if(autoResume){
+      running = true;
+      alarmActive = false;
+      el.startBtn.disabled = true;
+      el.pauseBtn.disabled = false;
+      tickHandle = setInterval(tick, 1000);
+    } else {
+      running = false;
+      el.startBtn.disabled = false;
+      el.pauseBtn.disabled = true;
+    }
+    updatePresenter();
+    showRecoveryBanner(autoResume, gapMs);
+  })();
+
   renderCueList();
   updateTimeDisplay();
 })();
