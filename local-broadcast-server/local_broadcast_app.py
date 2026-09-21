@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
 """
-Stage Effects — Local Broadcast (one-click app)
-=================================================
+Stage Effects / Spaan — Local Broadcast (one-click app)
+=========================================================
 
 This is the same offline local-network broadcast as before, but packaged as
 a single double-clickable app instead of a script you run from a terminal.
 There is nothing to install and nothing to type: double-click it, a window
 opens showing two QR codes, crew scan the one they need, done.
 
+Stage Effects and Spaan are two completely separate acts and always build
+and run as two separate apps (see the BRANDS dict below) — each app only
+ever knows about its own brand's Stage Manager/Crew/Viewer pages, and its
+window only ever shows that one brand. There is no shared, both-brands-at-
+once launcher. This file holds the shared implementation; the actual
+double-clickable apps are tiny wrapper entry points (this file itself for
+Stage Effects, local_broadcast_app_spaan.py for Spaan) that just pick which
+brand to run as — see main() at the bottom.
+
 Runs entirely on this computer, on your local Wi-Fi/network — no internet
-required. It does two things at once:
+required. It does three things at once:
 
   1. Stands in for a Firebase Realtime Database, using the same tiny REST
      shape (GET returns JSON at a path, PUT replaces it, PATCH merges into
@@ -17,22 +26,50 @@ required. It does two things at once:
      so the show state, Crew Chat, and Crew Talk voice signaling all just
      work, the same as they would against a real Firebase project.
 
-  2. Serves the Crew and Viewer pages that live in this same folder, so
-     crew phones don't need to reach GitHub Pages (or anywhere else on the
-     internet) either — everything comes from this one machine.
+  2. Serves the Crew and Viewer pages (and this brand's Stage Manager
+     control panel) that live in this same folder, so crew phones don't
+     need to reach GitHub Pages (or anywhere else on the internet) either —
+     everything comes from this one machine.
+
+  3. Serves all of the above over HTTPS, using a self-signed certificate
+     this app generates and keeps on this computer (see the CERT section
+     below) — so Crew Talk's microphone access works too, with zero
+     internet, which plain http can never do (browsers only expose the
+     microphone on a "secure context": https, or loopback).
 
 HOW TO USE
 ----------
 1. Double-click this app. A window opens with this computer's address, two
    QR codes (Crew / Viewer), and an "Open Stage Manager" button.
-2. Click "Open Stage Manager" (or visit this computer's address shown in
+2. The FIRST time, your browser will warn that the connection isn't
+   private — that's expected, this is a self-signed certificate this app
+   made just for this computer, not a real security problem. Click through
+   it (e.g. "Advanced" -> "Proceed"/"visit this website") once per device;
+   it won't ask again on that device for this computer's address.
+3. Click "Open Stage Manager" (or visit this computer's address shown in
    the window) rather than the usual github.io link — this is what makes
-   local broadcast work in every browser, Windows or Mac, Safari included
-   (see MIXED CONTENT below for why). Stage Manager then finds this app on
-   its own automatically, nothing to type in Setup.
-3. Hand crew the QR code for the page they need, or use the Copy Link
+   local broadcast work in every browser, Windows or Mac, Safari included.
+   Stage Manager then finds this app on its own automatically, nothing to
+   type in Setup.
+4. Hand crew the QR code for the page they need, or use the Copy Link
    buttons. It only works for devices on this same network, but it never
    needs to leave the building.
+
+CERTIFICATE (why the one-time "not private" warning, and how it's avoided
+after that)
+------------------------------------------------------------------------
+A normal (CA-signed) https certificate has to be issued by someone the
+browser already trusts, which means proving you own a public domain name —
+meaningless for a laptop on a venue's private Wi-Fi with no internet. So
+this app makes its own ("self-signed") certificate instead, covering every
+IP address this computer has ever used with it (kept in
+~/.stage_effects_local_broadcast/, alongside the certificate itself, so a
+venue's network this computer has visited before never re-prompts). The
+browser can't verify a self-signed certificate against anyone, so it warns
+once — that's the "scary warning" — but the connection itself is exactly as
+encrypted as any other https connection, it just isn't vouched for by a
+public certificate authority. Clicking through it is a one-time thing per
+device, not per show.
 
 MIXED CONTENT (why "Open Stage Manager" from here, not the usual link)
 ------------------------------------------------------------------------
@@ -40,33 +77,64 @@ The usual Stage Manager link is served over https (GitHub Pages). Browsers
 block an https page's own requests to a plain http:// address unless it's
 loopback (127.0.0.1) — and even that exemption isn't consistent across
 browsers (Chrome/Edge/Firefox honor it, Safari has historically been
-stricter). Opening Stage Manager FROM this app instead means the page
-itself is served over plain http, the same as this app — no https-to-http
-mismatch, so nothing gets blocked, in any browser.
+stricter). Serving this app itself over https too (see CERTIFICATE above)
+sidesteps this entirely — an https page talking to another https address is
+never "mixed content", in any browser.
 
 Leave this window open for the duration of the show — closing it stops the
-local broadcast for anyone using it. Nothing here is saved to disk; closing
-it clears the current room's state, same as restarting a Firebase project
-would.
+local broadcast for anyone using it. Nothing here is saved to disk (besides
+the certificate above); closing it clears the current room's state, same as
+restarting a Firebase project would.
 """
 
+import datetime
+import ipaddress
 import json
 import mimetypes
 import os
 import socket
+import ssl
 import sys
 import threading
 import tkinter as tk
 import webbrowser
 from tkinter import font as tkfont
+from tkinter import messagebox
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-APP_NAME = 'Stage Effects — Local Broadcast'
-APP_ID = 'stage-effects-local-broadcast'
-APP_VERSION = 2
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
+# ---------------------------------------------------------------------------
+# Brands — Stage Effects and Spaan always run as two separate apps. Whichever
+# one this process is (set by main(), called from this file's own __main__
+# below for Stage Effects, or from local_broadcast_app_spaan.py for Spaan),
+# BRAND is the only brand this running app ever knows about.
+# ---------------------------------------------------------------------------
+BRANDS = {
+    'stage_effects': {
+        'app_name': 'Stage Effects — Local Broadcast',
+        'brand_label': 'Stage Effects',
+        'sm_file': 'Stage_Effects_Stage_Manager.html',
+        'crew_file': 'Stage_Effects_Crew.html',
+        'viewer_file': 'Stage_Effects_Viewer.html',
+        'default_port': 8765,
+    },
+    'spaan': {
+        'app_name': 'Spaan — Local Broadcast',
+        'brand_label': 'Spaan',
+        'sm_file': 'Spaan_Stage_Manager_Countdown.html',
+        'crew_file': 'Spaan_Crew.html',
+        'viewer_file': 'Spaan_Viewer.html',
+        'default_port': 8766,
+    },
+}
 
-# PyInstaller unpacks bundled data files (the Crew/Viewer HTML) next to a
+APP_ID = 'stage-effects-local-broadcast'
+APP_VERSION = 3  # bumped: brand-split + https
+BRAND_ID = 'stage_effects'   # overwritten by main() before anything starts
+BRAND = BRANDS[BRAND_ID]
+APP_NAME = BRAND['app_name']
+PORT = 8765                  # overwritten by main()
+
+# PyInstaller unpacks bundled data files (the brand's HTML pages) next to a
 # temp folder given in sys._MEIPASS at runtime; a plain `python3
 # local_broadcast_app.py` run (e.g. while developing) has no such folder, so
 # fall back to this script's own directory in that case.
@@ -151,24 +219,121 @@ def local_ip_addresses():
     return sorted(ips)
 
 
-# The Stage Manager control panel(s) this build ships (build.py copies
-# whichever ones exist alongside the Crew/Viewer pages, same as those).
-# Serving these from this app too -- not just the Crew/Viewer pages -- is
-# what lets Stage Manager itself be opened over plain http instead of the
-# usual https github.io link, which is what makes local broadcast actually
-# work in every browser (see the module docstring's MIXED CONTENT section).
-_SM_FILE_LABELS = (
-    ('Stage_Effects_Stage_Manager.html', 'Stage Effects'),
-    ('Spaan_Stage_Manager_Countdown.html', 'Spaan'),
-)
+# ---------------------------------------------------------------------------
+# Self-signed HTTPS certificate
+# ---------------------------------------------------------------------------
+# Kept in the user's home directory (not next to the app, which may be
+# read-only or re-downloaded/replaced) so it survives across app restarts
+# and across Stage Effects/Spaan both running on the same computer — one
+# certificate, shared by both brands, covering every IP this computer has
+# ever broadcast from, is what lets a device that already clicked through
+# the warning once for a known venue never see it again there, no matter
+# which brand's app it's talking to.
+CERT_DIR = os.path.join(os.path.expanduser('~'), '.stage_effects_local_broadcast')
+CERT_PATH = os.path.join(CERT_DIR, 'cert.pem')
+KEY_PATH = os.path.join(CERT_DIR, 'key.pem')
+KNOWN_IPS_PATH = os.path.join(CERT_DIR, 'known_ips.json')
 
 
-def stage_manager_files():
-    """[(label, filename), ...] for whichever Stage Manager build(s) are
-    actually present alongside this script -- so the app only offers to
-    open ones that really exist."""
-    return [(label, fname) for fname, label in _SM_FILE_LABELS
-            if os.path.isfile(os.path.join(SCRIPT_DIR, fname))]
+def _load_known_ips():
+    try:
+        with open(KNOWN_IPS_PATH) as f:
+            return set(json.load(f))
+    except Exception:
+        return set()
+
+
+def _save_known_ips(ips):
+    os.makedirs(CERT_DIR, exist_ok=True)
+    with open(KNOWN_IPS_PATH, 'w') as f:
+        json.dump(sorted(ips), f)
+
+
+def _san_entries(ips):
+    from cryptography import x509
+    names = [x509.DNSName('localhost')]
+    seen = set()
+    for ip in sorted({'127.0.0.1'} | set(ips)):
+        try:
+            addr = ipaddress.ip_address(ip)
+        except ValueError:
+            continue
+        if addr in seen:
+            continue
+        seen.add(addr)
+        names.append(x509.IPAddress(addr))
+    return names
+
+
+def _generate_cert(ips):
+    """Writes a fresh self-signed cert/key covering every IP in `ips` (plus
+    localhost/127.0.0.1) to CERT_PATH/KEY_PATH, valid for ~10 years so it's
+    effectively a one-time thing per computer, not per show."""
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, u'Local Broadcast (self-signed)')])
+    now = datetime.datetime.utcnow()
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(days=1))
+        .not_valid_after(now + datetime.timedelta(days=3650))
+        .add_extension(x509.SubjectAlternativeName(_san_entries(ips)), critical=False)
+        .sign(key, hashes.SHA256())
+    )
+    os.makedirs(CERT_DIR, exist_ok=True)
+    with open(KEY_PATH, 'wb') as f:
+        f.write(key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.TraditionalOpenSSL,
+            encryption_algorithm=serialization.NoEncryption(),
+        ))
+    with open(CERT_PATH, 'wb') as f:
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+    _save_known_ips(ips)
+
+
+def ensure_cert(ssl_context=None):
+    """Makes sure a certificate covering every IP this computer currently
+    has exists, generating/regenerating one if needed, and (if an already-
+    running ssl_context is given) hot-swaps it in so already-accepted
+    connections are undisturbed and only new ones pick up the change —
+    called once at startup, and again from the address-refresh loop
+    whenever a genuinely new IP shows up (e.g. arriving at a new venue),
+    so a previously-seen network never re-prompts but a brand new one is
+    covered within a few seconds without needing a restart."""
+    known = _load_known_ips()
+    current = set(local_ip_addresses())
+    need_new = (
+        not os.path.isfile(CERT_PATH)
+        or not os.path.isfile(KEY_PATH)
+        or not current.issubset(known)
+    )
+    if need_new:
+        known |= current
+        try:
+            _generate_cert(known)
+        except Exception:
+            # Cert generation failing shouldn't take the whole app down —
+            # surfaced to the user via the window's status area instead by
+            # the caller checking os.path.isfile(CERT_PATH) after this.
+            return False
+    if ssl_context is not None and os.path.isfile(CERT_PATH) and os.path.isfile(KEY_PATH):
+        ssl_context.load_cert_chain(CERT_PATH, KEY_PATH)
+    return True
+
+
+def build_ssl_context():
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ensure_cert(ctx)
+    return ctx
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -209,8 +374,11 @@ class Handler(BaseHTTPRequestHandler):
         ips = local_ip_addresses()
         self._send_json({
             'app': APP_ID,
+            'brand': BRAND_ID,
+            'brandLabel': BRAND['brand_label'],
             'version': APP_VERSION,
             'port': PORT,
+            'scheme': 'https',
             'lan_ip': ips[0] if ips else None,
         })
 
@@ -248,7 +416,8 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._send_not_found()
 
-    # ---- static file serving: the Crew/Viewer pages, from this same folder ----
+    # ---- static file serving: this brand's Crew/Viewer/Stage Manager pages,
+    # from this same folder ----
 
     def _serve_static(self, path):
         if path == '/':
@@ -277,41 +446,37 @@ class Handler(BaseHTTPRequestHandler):
     def _send_index(self):
         ips = local_ip_addresses()
         addr = ips[0] if ips else '127.0.0.1'
-        base = 'http://%s:%d' % (addr, PORT)
-        has_crew = os.path.isfile(os.path.join(SCRIPT_DIR, 'Stage_Effects_Crew.html'))
-        has_viewer = os.path.isfile(os.path.join(SCRIPT_DIR, 'Stage_Effects_Viewer.html'))
-        sm_files = stage_manager_files()
+        base = 'https://%s:%d' % (addr, PORT)
+        has_sm = os.path.isfile(os.path.join(SCRIPT_DIR, BRAND['sm_file']))
+        has_crew = os.path.isfile(os.path.join(SCRIPT_DIR, BRAND['crew_file']))
+        has_viewer = os.path.isfile(os.path.join(SCRIPT_DIR, BRAND['viewer_file']))
         links = ''
         # Absolute (not relative) links throughout: this index page might get
         # reached via a loopback address (someone typed 127.0.0.1) even though
         # the useful address for anything handed to another device is the LAN
         # one -- absolute links mean every button always lands on the right
         # address regardless of how this page itself was reached.
-        for label, fname in sm_files:
-            links += ('<a class="btn btn-primary" href="%s/%s">Open Stage Manager (%s)</a>'
-                      % (base, fname, label))
+        if has_sm:
+            links += '<a class="btn btn-primary" href="%s/%s">Open Stage Manager</a>' % (base, BRAND['sm_file'])
         if has_crew:
-            links += '<a class="btn" href="%s/Stage_Effects_Crew.html">Open Crew Page</a>' % base
+            links += '<a class="btn" href="%s/%s">Open Crew Page</a>' % (base, BRAND['crew_file'])
         if has_viewer:
-            links += '<a class="btn" href="%s/Stage_Effects_Viewer.html">Open Viewer Page</a>' % base
-        # Opening Stage Manager from a link here (rather than the usual
-        # github.io one) is what makes local broadcast work in every browser
-        # -- see the module docstring's MIXED CONTENT section for why.
+            links += '<a class="btn" href="%s/%s">Open Viewer Page</a>' % (base, BRAND['viewer_file'])
         intro = (
             '<p style="color:#666;margin-bottom:10px;">Open Stage Manager from the button below '
             '&mdash; it works in every browser this way, Safari included. This computer\'s address:</p>'
-            if sm_files else
+            if has_sm else
             '<p style="color:#666;margin-bottom:10px;">Enter this address in Stage Manager, '
             'under Setup &rarr; Local Network Broadcast:</p>'
         )
         body = (
             '<!doctype html><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width, initial-scale=1">'
-            '<title>Local Broadcast Server</title>'
+            '<title>%s — Local Broadcast</title>'
             '<body style="font:17px system-ui;max-width:420px;margin:64px auto;'
             'padding:0 20px;text-align:center;color:#222;">'
             '<h1 style="font-size:20px;margin-bottom:36px;">'
-            '<span style="color:#2ecc71;">&#9679;</span> Local Broadcast '
+            '<span style="color:#2ecc71;">&#9679;</span> %s Local Broadcast '
             'is running</h1>'
             '%s'
             '<p style="font-size:22px;font-weight:600;background:#f0f0f0;border-radius:10px;'
@@ -321,7 +486,7 @@ class Handler(BaseHTTPRequestHandler):
             'color:#fff;text-decoration:none;font-weight:600;}'
             '.btn-primary{background:#FF9500;color:#131F1B;}</style>'
             '</body>'
-        ) % (intro, base, links)
+        ) % (BRAND['brand_label'], BRAND['brand_label'], intro, base, links)
         body_bytes = body.encode()
         self.send_response(200)
         self._cors()
@@ -363,11 +528,13 @@ def draw_qr(canvas, data, box_size=6, border=2):
 
 
 class App:
-    def __init__(self, root, server, port):
+    def __init__(self, root, server, port, ssl_context):
         self.root = root
         self.server = server
         self.port = port
+        self.ssl_context = ssl_context
         self.last_addr = None
+        self.known_ips = _load_known_ips()
 
         root.title(APP_NAME)
         root.configure(bg='#131F1B')
@@ -381,7 +548,7 @@ class App:
 
         header = tk.Frame(root, bg='#131F1B')
         header.pack(fill='x', pady=(22, 8))
-        tk.Label(header, text='●  Local Broadcast is running', fg='#3FD07F',
+        tk.Label(header, text='●  %s — Local Broadcast is running' % BRAND['brand_label'], fg='#3FD07F',
                   bg='#131F1B', font=big).pack()
         tk.Label(header, text='Leave this window open for the duration of the show.',
                   fg='#7E9088', bg='#131F1B', font=small).pack(pady=(2, 0))
@@ -396,20 +563,16 @@ class App:
                               relief='flat', font=small, padx=10, pady=6)
         copy_btn.pack(side='right', padx=12)
 
-        # One button per Stage Manager build actually shipped in this app
-        # (Stage Effects / Spaan) that opens it straight from this computer's
-        # own address -- see the module docstring's MIXED CONTENT section for
-        # why that's what makes local broadcast work in every browser,
-        # instead of sending Erik to the usual https github.io link.
-        self.sm_files = stage_manager_files()
-        if self.sm_files:
+        # One brand, one Stage Manager build -- one button, no brand suffix
+        # needed since this whole window is already that one brand (see the
+        # module docstring: Stage Effects and Spaan never share a window).
+        self.has_sm = os.path.isfile(os.path.join(SCRIPT_DIR, BRAND['sm_file']))
+        if self.has_sm:
             sm_frame = tk.Frame(root, bg='#131F1B')
             sm_frame.pack(fill='x', padx=28, pady=(0, 4))
-            for label, fname in self.sm_files:
-                btn_text = 'Open Stage Manager' if len(self.sm_files) == 1 else 'Open Stage Manager (%s)' % label
-                tk.Button(sm_frame, text=btn_text, command=lambda f=fname: self.open_stage_manager(f),
-                          bg='#FF9500', fg='#131F1B', activebackground='#FFB443',
-                          relief='flat', font=small, padx=10, pady=8).pack(fill='x', pady=4)
+            tk.Button(sm_frame, text='Open Stage Manager', command=self.open_stage_manager,
+                      bg='#FF9500', fg='#131F1B', activebackground='#FFB443',
+                      relief='flat', font=small, padx=10, pady=8).pack(fill='x', pady=4)
 
         qr_frame = tk.Frame(root, bg='#131F1B')
         qr_frame.pack(fill='both', expand=True, pady=6)
@@ -441,19 +604,18 @@ class App:
     def copy_address(self):
         self._copy(self.addr_label.cget('text'))
 
-    def open_stage_manager(self, fname):
+    def open_stage_manager(self):
         # Deliberately 127.0.0.1, NOT self.last_addr (the LAN address used
         # for crew's QR codes/links). This button always runs on the same
-        # computer as this app, so localhost reaches it just fine -- and
-        # unlike the LAN address, localhost is a browser "secure context",
-        # which is required for Crew Talk's microphone access to work at
-        # all. Opening this button's page at the LAN address instead would
-        # silently break the operator's own mic (Join Voice would do
-        # nothing), even though the countdown/Crew Chat would look fine --
-        # see the matching comment in Stage Manager's own joinVoice().
+        # computer as this app, so localhost reaches it just fine, and
+        # avoids one extra click-through of the certificate warning (this
+        # computer already trusts its own loopback cert the same as any
+        # other address it's generated for, but 127.0.0.1 is always in the
+        # certificate from the very first run, before this computer's real
+        # LAN IP is even known).
         if not self.last_addr or 'detecting' in (self.last_addr or ''):
             return  # address not known yet, e.g. clicked in the first instant after launch
-        webbrowser.open('http://127.0.0.1:%d/%s' % (self.port, fname))
+        webbrowser.open('https://127.0.0.1:%d/%s' % (self.port, BRAND['sm_file']))
 
     def _copy(self, text):
         self.root.clipboard_clear()
@@ -463,13 +625,25 @@ class App:
     def refresh_address(self):
         ips = local_ip_addresses()
         addr = ips[0] if ips else '127.0.0.1'
-        base = 'http://%s:%d' % (addr, self.port)
+        base = 'https://%s:%d' % (addr, self.port)
+
+        # A genuinely new IP (new venue/network) needs a fresh certificate
+        # covering it -- hot-swapped into the already-running TLS listener
+        # so this doesn't need a restart. Already-known IPs (a venue this
+        # computer has broadcast from before) never regenerate, which is
+        # what keeps the "not private" warning to a true one-time thing per
+        # device per venue instead of every show.
+        current_ips = set(ips)
+        if not current_ips.issubset(self.known_ips):
+            self.known_ips |= current_ips
+            ensure_cert(self.ssl_context)
+
         if base != self.last_addr:
             self.last_addr = base
             self.addr_label.config(text=base)
 
-            crew_link = base + '/Stage_Effects_Crew.html'
-            viewer_link = base + '/Stage_Effects_Viewer.html'
+            crew_link = base + '/' + BRAND['crew_file']
+            viewer_link = base + '/' + BRAND['viewer_file']
             self.crew_col['link'] = crew_link
             self.viewer_col['link'] = viewer_link
             self.crew_col['copy_btn'].config(command=lambda: self._copy(crew_link))
@@ -489,15 +663,62 @@ class App:
         self.root.destroy()
 
 
-def main():
+def _fatal_error(title, message):
+    """Best-effort GUI error box for a startup failure that would otherwise
+    just be a silent crash or a console traceback nobody double-clicking an
+    app ever sees."""
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror(title, message)
+        root.destroy()
+    except Exception:
+        print('%s: %s' % (title, message), file=sys.stderr)
+
+
+def main(brand_id='stage_effects', port=None):
+    global BRAND_ID, BRAND, APP_NAME, PORT
+
+    if brand_id not in BRANDS:
+        brand_id = 'stage_effects'
+    BRAND_ID = brand_id
+    BRAND = BRANDS[BRAND_ID]
+    APP_NAME = BRAND['app_name']
+
+    if port is None:
+        # `python3 local_broadcast_app.py 9000` still works for anyone
+        # running from source who wants a specific port.
+        port = int(sys.argv[1]) if len(sys.argv) > 1 else BRAND['default_port']
+    PORT = port
+
+    try:
+        import cryptography  # noqa: F401
+    except ImportError:
+        _fatal_error(
+            APP_NAME,
+            "This app needs the 'cryptography' package to serve itself over "
+            "HTTPS (needed for Crew Talk's microphone to work). If you're "
+            "running this from source, install it with:\n\n"
+            "    pip install cryptography\n\n"
+            "The downloadable app from GitHub already includes it."
+        )
+        sys.exit(1)
+
+    ssl_context = build_ssl_context()
+    if not os.path.isfile(CERT_PATH):
+        _fatal_error(APP_NAME, "Couldn't create the certificate needed for HTTPS. "
+                                "Check that %s is writable, then try again." % CERT_DIR)
+        sys.exit(1)
+
     server = ThreadingHTTPServer(('0.0.0.0', PORT), Handler)
+    server.socket = ssl_context.wrap_socket(server.socket, server_side=True)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
 
     root = tk.Tk()
-    App(root, server, PORT)
+    App(root, server, PORT, ssl_context)
     root.mainloop()
 
 
 if __name__ == '__main__':
-    main()
+    main('stage_effects')
