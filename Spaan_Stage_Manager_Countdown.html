@@ -348,6 +348,8 @@
     color:var(--text);background:var(--warn-chip);border:1px solid var(--gold-accent);
     border-radius:0;padding:10px 14px;margin-bottom:12px;}
   .bc-local-detected b{font-family:var(--mono);}
+  .bc-local-download{margin-bottom:10px;}
+  .bc-local-download a{color:var(--gold-accent);font-weight:600;}
   .bc-qr-row{display:flex;gap:14px;flex-wrap:wrap;margin:4px 0 10px;}
   .bc-qr-row[hidden]{display:none;}
   .bc-qr-box{
@@ -961,6 +963,9 @@
 
         <details class="bc-advanced bc-local">
           <summary>Local Network Broadcast <span class="bc-optional">(no internet needed &mdash; only reaches people on this venue's Wi-Fi, runs alongside the link above)</span></summary>
+          <div class="bc-status bc-local-download">
+            Don't have the Local Broadcast app on this computer yet? <a href="https://github.com/TheDominee/Stage-Effects-Stage-Manager/releases/tag/local-broadcast-latest" target="_blank" rel="noopener">Download it here</a> &mdash; free, no install, works on Mac or Windows.
+          </div>
           <div class="bc-status bc-local-detected" id="bcLocalDetectedBanner" hidden>
             Found the Local Broadcast app running on this computer at <b id="bcLocalDetectedAddr"></b>.
             <button class="btn small gold" id="bcLocalDetectedEnableBtn" type="button">Use it</button>
