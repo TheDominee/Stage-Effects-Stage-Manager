@@ -1395,15 +1395,37 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     if(bcSettings.localEnabled || el.bcLocalUrl.value.trim()) return; // already set up
     // If this page was opened FROM the Local Broadcast app itself (its
     // "Open Stage Manager" button, or its own address typed into a browser)
-    // rather than the usual https github.io link, there's nothing to probe
-    // for -- the app IS this page's own origin. This is also what makes
-    // local broadcast work in every browser, Safari included: a plain http
-    // page talking to another http address isn't subject to the mixed-
-    // content restriction an https page runs into (see localWriteBase()).
-    if(location.protocol === 'http:' && location.origin){
-      el.bcLocalDetectedAddr.textContent = location.origin;
-      el.bcLocalDetectedBanner.hidden = false;
-      el.bcLocalDetectedBanner.dataset.addr = location.origin;
+    // rather than the usual https github.io link, there's no need to probe
+    // loopback candidates over the network -- the app IS this page's own
+    // origin, so its own /__stage_effects_meta answers instantly. This is
+    // also what makes local broadcast work in every browser, Safari
+    // included: a plain http page talking to another http address isn't
+    // subject to the mixed-content restriction an https page runs into
+    // (see localWriteBase()).
+    //
+    // Still worth asking meta for the real LAN IP here rather than just
+    // trusting location.origin: the "Open Stage Manager" button opens THIS
+    // page at 127.0.0.1 on purpose (loopback is a browser "secure context",
+    // which Crew Talk's microphone needs -- see joinVoice()), but crew's
+    // own QR codes/links need the real LAN address, not loopback, to be
+    // reachable from their phones. Asking meta keeps both correct
+    // regardless of which address this page itself was opened at.
+    if(location.protocol === 'http:' && location.origin && typeof fetch !== 'undefined'){
+      var offerAddr = function(addr){
+        if(bcSettings.localEnabled || el.bcLocalUrl.value.trim()) return; // a detection/entry already landed first
+        el.bcLocalDetectedAddr.textContent = addr;
+        el.bcLocalDetectedBanner.hidden = false;
+        el.bcLocalDetectedBanner.dataset.addr = addr;
+      };
+      fetch('/__stage_effects_meta').then(function(res){
+        return res.ok ? res.json() : null;
+      }).then(function(meta){
+        offerAddr((meta && meta.lan_ip) ? ('http://' + meta.lan_ip + ':' + (meta.port || 8765)) : location.origin);
+      }).catch(function(){
+        // Even if meta is somehow unreachable, this page's own origin is
+        // guaranteed reachable from itself -- offer that rather than nothing.
+        offerAddr(location.origin);
+      });
       return;
     }
     if(typeof AbortController === 'undefined' || typeof fetch === 'undefined') return;
@@ -2926,6 +2948,16 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   function joinVoice(){
     if(!crewChatAvailable()){
       alert('Start Broadcasting with the advanced Firebase setup first, then Join Voice.');
+      return;
+    }
+    // Same secure-context restriction as the Crew/Viewer pages (see the
+    // matching comment there): opening THIS control panel at Local
+    // Broadcast's real address (the "Open Stage Manager" button, or its own
+    // QR/address) is plain http on a non-localhost address, so the
+    // microphone is unavailable here even though everything else (running
+    // the show, Crew Chat, broadcasting) works fine.
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      alert("Can't use the microphone here — browsers only allow that over a secure (https) connection, or on this same computer's own localhost address. Crew Talk voice needs either the usual internet broadcast, or opening this panel at http://127.0.0.1:<port> instead of the LAN address, on the computer actually running Local Broadcast.");
       return;
     }
     navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream){
