@@ -965,6 +965,7 @@
           <summary>Local Network Broadcast <span class="bc-optional">(no internet needed &mdash; only reaches people on this venue's Wi-Fi, runs alongside the link above)</span></summary>
           <div class="bc-status bc-local-download">
             Don't have the Local Broadcast app on this computer yet? <a href="https://github.com/TheDominee/Stage-Effects-Stage-Manager/releases/tag/local-broadcast-latest" target="_blank" rel="noopener">Download it here</a> &mdash; free, no install, works on Mac or Windows.
+            <br>Works in any browser (Safari included) when you open Stage Manager from the "Open Stage Manager" button <i>inside</i> that app, instead of this usual link &mdash; the app's own window explains why.
           </div>
           <div class="bc-status bc-local-detected" id="bcLocalDetectedBanner" hidden>
             Found the Local Broadcast app running on this computer at <b id="bcLocalDetectedAddr"></b>.
@@ -1392,6 +1393,19 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   // never turns broadcasting on by itself; Erik still clicks "Use it".
   function detectLocalBroadcastServer(){
     if(bcSettings.localEnabled || el.bcLocalUrl.value.trim()) return; // already set up
+    // If this page was opened FROM the Local Broadcast app itself (its
+    // "Open Stage Manager" button, or its own address typed into a browser)
+    // rather than the usual https github.io link, there's nothing to probe
+    // for -- the app IS this page's own origin. This is also what makes
+    // local broadcast work in every browser, Safari included: a plain http
+    // page talking to another http address isn't subject to the mixed-
+    // content restriction an https page runs into (see localWriteBase()).
+    if(location.protocol === 'http:' && location.origin){
+      el.bcLocalDetectedAddr.textContent = location.origin;
+      el.bcLocalDetectedBanner.hidden = false;
+      el.bcLocalDetectedBanner.dataset.addr = location.origin;
+      return;
+    }
     if(typeof AbortController === 'undefined' || typeof fetch === 'undefined') return;
     var candidates = ['http://127.0.0.1:8765', 'http://localhost:8765'];
     candidates.forEach(function(base){
@@ -1494,22 +1508,35 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   // above is using. Reuses the same Room ID as the internet broadcast so
   // both sides always describe the same show.
   //
-  // IMPORTANT: this page is served over https (GitHub Pages). Browsers
-  // flat-out refuse an https page's own fetch() to a plain http:// address
-  // ("mixed content") UNLESS that address is loopback (127.0.0.1/localhost)
-  // -- the one address every browser treats as "this same computer, no
-  // network eavesdropping risk" and exempts from the block. The address in
-  // "Local server address" is deliberately this computer's real network
-  // address (so it's usable in the crew/viewer links and QR codes handed to
-  // OTHER devices -- see buildLocalViewerLink/buildLocalCrewLink below) --
-  // but THIS page talking to the app directly has to go via loopback
-  // instead, or the request is silently blocked (shows up as "Load failed"
-  // / "Failed to fetch", even though the address is completely correct and
-  // the app is running fine). So: always write via loopback, on whatever
-  // port the configured address uses. This only reaches the app when Stage
-  // Manager and the Local Broadcast app are running on the same computer --
-  // which is the supported setup (see the Setup page copy above).
+  // IMPORTANT: when this page is served over https (the usual github.io
+  // link), browsers flat-out refuse an https page's own fetch() to a plain
+  // http:// address ("mixed content") UNLESS that address is loopback
+  // (127.0.0.1/localhost) -- the one address every browser treats as "this
+  // same computer, no network eavesdropping risk" and exempts from the
+  // block (and even that exemption isn't reliable in every browser -- see
+  // below). The address in "Local server address" is deliberately this
+  // computer's real network address (so it's usable in the crew/viewer
+  // links and QR codes handed to OTHER devices -- see
+  // buildLocalViewerLink/buildLocalCrewLink below) -- but an https page
+  // talking to the app directly has to go via loopback instead, or the
+  // request is silently blocked (shows up as "Load failed" / "Failed to
+  // fetch", even though the address is completely correct and the app is
+  // running fine).
+  //
+  // When this page is instead opened directly from the Local Broadcast app
+  // (its "Open Stage Manager" button, or its own address typed into a
+  // browser -- see the app's own instructions), it's served over plain
+  // http, same as the app itself -- no https-to-http mismatch, so nothing
+  // is blocked, in ANY browser (this is what makes it reliably work in
+  // Safari too, not just Chrome/Edge/Firefox, and on Windows the same as
+  // Mac -- the restriction was always about the page's own protocol, never
+  // the operating system). In that case just talk to whichever address is
+  // configured (or, if none is, this page's own origin -- since being
+  // loaded over http here means we ARE being served by the app).
   function localWriteBase(){
+    if(location.protocol !== 'https:'){
+      return (bcSettings.localUrl || location.origin).replace(/\/+$/,'');
+    }
     var m = /:(\d+)\s*$/.exec(bcSettings.localUrl || '');
     var port = m ? m[1] : '8765';
     return 'http://127.0.0.1:' + port;
