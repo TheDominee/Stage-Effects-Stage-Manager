@@ -1,10 +1,15 @@
 name: Build Local Broadcast app
 
-# Builds the one-click "Stage Effects Local Broadcast" app for Mac and
-# Windows and publishes them to a permanent download page (the
-# "local-broadcast-latest" Release on this repo). Nothing needs to be
-# installed on your own computer to get new builds — GitHub's own servers
-# do the building.
+# Builds the one-click "Local Broadcast" apps for Mac and Windows and
+# publishes them to a permanent download page (the "local-broadcast-latest"
+# Release on this repo). Nothing needs to be installed on your own computer
+# to get new builds — GitHub's own servers do the building.
+#
+# Stage Effects and Spaan always build as two completely separate apps (see
+# local_broadcast_app.py's BRANDS dict and module docstring) — each one only
+# ever knows about its own brand's Stage Manager/Crew/Viewer pages, so there
+# is no shared, both-brands-at-once launcher. The matrix below builds both,
+# for both platforms, as four separate downloads.
 #
 # Runs automatically whenever local-broadcast-server/ changes on main, and
 # can also be run by hand: go to this repo's "Actions" tab (top of the
@@ -25,6 +30,21 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - brand: stage_effects
+            app_name: 'Stage Effects Local Broadcast'
+            entry: local_broadcast_app.py
+            crew: Stage_Effects_Crew.html
+            viewer: Stage_Effects_Viewer.html
+            sm: Stage_Effects_Stage_Manager.html
+          - brand: spaan
+            app_name: 'Spaan Local Broadcast'
+            entry: local_broadcast_app_spaan.py
+            crew: Spaan_Crew.html
+            viewer: Spaan_Viewer.html
+            sm: Spaan_Stage_Manager_Countdown.html
     steps:
       - uses: actions/checkout@v4
 
@@ -33,29 +53,43 @@ jobs:
           python-version: '3.12'
 
       - name: Install build dependencies
-        run: pip install pyinstaller qrcode
+        run: pip install pyinstaller qrcode cryptography
 
-      - name: Build Stage Effects Local Broadcast.exe
+      - name: Build ${{ matrix.app_name }}.exe
         working-directory: local-broadcast-server
         run: >
           pyinstaller --onefile --windowed
-          --name "Stage Effects Local Broadcast"
-          --add-data "Stage_Effects_Crew.html;."
-          --add-data "Stage_Effects_Viewer.html;."
-          --add-data "Stage_Effects_Stage_Manager.html;."
-          --add-data "Spaan_Crew.html;."
-          --add-data "Spaan_Viewer.html;."
-          --add-data "Spaan_Stage_Manager_Countdown.html;."
+          --name "${{ matrix.app_name }}"
+          --add-data "${{ matrix.crew }};."
+          --add-data "${{ matrix.viewer }};."
+          --add-data "${{ matrix.sm }};."
           --hidden-import qrcode
-          local_broadcast_app.py
+          --hidden-import cryptography
+          --collect-all cryptography
+          ${{ matrix.entry }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Stage Effects Local Broadcast (Windows)
-          path: local-broadcast-server/dist/Stage Effects Local Broadcast.exe
+          name: ${{ matrix.app_name }} (Windows)
+          path: local-broadcast-server/dist/${{ matrix.app_name }}.exe
 
   build-mac:
     runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - brand: stage_effects
+            app_name: 'Stage Effects Local Broadcast'
+            entry: local_broadcast_app.py
+            crew: Stage_Effects_Crew.html
+            viewer: Stage_Effects_Viewer.html
+            sm: Stage_Effects_Stage_Manager.html
+          - brand: spaan
+            app_name: 'Spaan Local Broadcast'
+            entry: local_broadcast_app_spaan.py
+            crew: Spaan_Crew.html
+            viewer: Spaan_Viewer.html
+            sm: Spaan_Stage_Manager_Countdown.html
     steps:
       - uses: actions/checkout@v4
 
@@ -64,32 +98,31 @@ jobs:
           python-version: '3.12'
 
       - name: Install build dependencies
-        run: pip install pyinstaller qrcode
+        run: pip install pyinstaller qrcode cryptography
 
-      - name: Build Stage Effects Local Broadcast.app
+      - name: Build ${{ matrix.app_name }}.app
         working-directory: local-broadcast-server
         run: >
           pyinstaller --onefile --windowed
-          --name "Stage Effects Local Broadcast"
-          --add-data "Stage_Effects_Crew.html:."
-          --add-data "Stage_Effects_Viewer.html:."
-          --add-data "Stage_Effects_Stage_Manager.html:."
-          --add-data "Spaan_Crew.html:."
-          --add-data "Spaan_Viewer.html:."
-          --add-data "Spaan_Stage_Manager_Countdown.html:."
+          --name "${{ matrix.app_name }}"
+          --add-data "${{ matrix.crew }}:."
+          --add-data "${{ matrix.viewer }}:."
+          --add-data "${{ matrix.sm }}:."
           --hidden-import qrcode
-          local_broadcast_app.py
+          --hidden-import cryptography
+          --collect-all cryptography
+          ${{ matrix.entry }}
 
       - name: Zip the .app bundle
         working-directory: local-broadcast-server/dist
         # A .app is actually a folder -- zip it so it survives upload/
         # download as one file and keeps its "it's an app" structure intact.
-        run: ditto -c -k --sequesterRsrc --keepParent "Stage Effects Local Broadcast.app" "Stage Effects Local Broadcast (Mac).zip"
+        run: ditto -c -k --sequesterRsrc --keepParent "${{ matrix.app_name }}.app" "${{ matrix.app_name }} (Mac).zip"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Stage Effects Local Broadcast (Mac)
-          path: local-broadcast-server/dist/Stage Effects Local Broadcast (Mac).zip
+          name: ${{ matrix.app_name }} (Mac)
+          path: local-broadcast-server/dist/${{ matrix.app_name }} (Mac).zip
 
   publish-release:
     needs: [build-windows, build-mac]
@@ -106,12 +139,22 @@ jobs:
           name: 'Local Broadcast — latest build'
           body: >
             Always up to date with the local-broadcast-server/ folder on
-            main. Download the file for your computer below, double-click
-            it, done — no Python install, no terminal window.
+            main. Stage Effects and Spaan are two separate downloads —
+            grab the one(s) you need for your computer below, double-click,
+            done — no Python install, no terminal window.
+
+
             First run: Mac will say the app is from an "unidentified
             developer" — right-click (Control-click) it and choose "Open"
             once. Windows may show a "Windows protected your PC" notice —
             click "More info" then "Run anyway" once. Neither warning
             appears again after that first time.
+
+
+            The app itself will also show a one-time "connection isn't
+            private" warning in your browser the first time you open Stage
+            Manager, Crew, or Viewer from it — that's expected (it's a
+            certificate the app makes for itself, not a real problem), and
+            it won't ask again after that on the same device.
           files: downloads/**/*
           fail_on_unmatched_files: true
