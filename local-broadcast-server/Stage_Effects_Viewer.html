@@ -500,13 +500,67 @@
   applyTheme();
 
   /* ---- connection settings: URL query params win, else localStorage ----
-     Two link shapes:
-     - ?blob=<url>        -- auto mode: a single ready-made JSON store URL
-     - ?db=<url>&room=<id> -- advanced mode: the sender's own Firebase project */
+     Three link shapes:
+     - ?blob=<url>                    -- auto mode: a single ready-made JSON store URL
+     - ?db=<url>&room=<id>            -- advanced mode: the sender's own Firebase project
+     - ?db=<local>&inet=<url>&room=<id> -- one Local Broadcast link that also carries an
+       internet fallback (see the failover block just below) */
   var qs = new URLSearchParams(location.search);
   var blobUrl = qs.get('blob') || loadJSON('sm_viewer_blobUrl', '');
-  var dbUrl = qs.get('db') || loadJSON('sm_viewer_dbUrl', '');
+  var primaryDbUrl = qs.get('db') || loadJSON('sm_viewer_dbUrl', '');
+  var fallbackDbUrl = qs.get('inet') || loadJSON('sm_viewer_inetUrl', '');
   var roomId = qs.get('room') || loadJSON('sm_viewer_roomId', '');
+
+  /* ---- automatic local/internet failover ----
+     One link, two possible backends. dbUrl below is the CURRENTLY ACTIVE
+     one -- every fetch/write everywhere else in this file reads dbUrl live
+     at call time, so switching backends is just reassigning this one
+     variable; nothing downstream needs to know a switch happened.
+     primaryDbUrl (the local broadcast computer, when this link came from
+     one) is always preferred: lower latency, and it's the only one that
+     still works with zero internet at the venue. fallbackDbUrl (the
+     internet/Firebase project) takes over automatically the moment primary
+     stops answering -- e.g. this phone walks out of the venue Wi-Fi -- and
+     control switches back the moment primary answers again, e.g. walking
+     back in range. No manual switching, no second link. A link with only
+     one of the two behaves exactly as before -- nothing to fail over
+     to/from. */
+  var dbUrl = primaryDbUrl || fallbackDbUrl;
+  var usingFallbackBackend = !primaryDbUrl && !!fallbackDbUrl;
+  var backendFailStreak = 0;
+  var backendProbeInFlight = false;
+
+  function switchBackend(toFallback){
+    if(usingFallbackBackend === toFallback) return;
+    usingFallbackBackend = toFallback;
+    dbUrl = toFallback ? fallbackDbUrl : primaryDbUrl;
+    backendFailStreak = 0;
+  }
+
+  // Called after every poll() against the currently active backend
+  // resolves or fails, to decide whether to fail over to the other one.
+  // Two misses in a row (not one) so a single dropped packet on an
+  // otherwise-fine network doesn't cause a needless switch.
+  function reportBackendResult(ok){
+    if(!primaryDbUrl || !fallbackDbUrl || usingFallbackBackend) return;
+    if(ok){ backendFailStreak = 0; return; }
+    backendFailStreak++;
+    if(backendFailStreak >= 2) switchBackend(true);
+  }
+
+  // While on the fallback, keep quietly checking the primary directly (not
+  // just waiting for it to show up in a regular poll, since polling only
+  // ever hits the currently active backend) so this device switches back
+  // to local the moment it's reachable again, e.g. back in Wi-Fi range.
+  function probePrimaryBackend(){
+    if(!primaryDbUrl || !fallbackDbUrl || !usingFallbackBackend || backendProbeInFlight) return;
+    backendProbeInFlight = true;
+    fetch(primaryDbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(roomId) + '.json', { cache: 'no-store' })
+      .then(function(r){ if(r.ok) switchBackend(false); })
+      .catch(function(){})
+      .then(function(){ backendProbeInFlight = false; });
+  }
+  setInterval(probePrimaryBackend, 5000);
 
   function haveSettings(){ return !!blobUrl || !!(dbUrl && roomId); }
   function fetchTargetUrl(){
@@ -518,9 +572,11 @@
     var u = el.setupDbUrl.value.trim(), r = el.setupRoomId.value.trim();
     if(!u || !r){ alert('Enter both the database URL and room ID.'); return; }
     blobUrl = '';
-    dbUrl = u; roomId = r;
+    primaryDbUrl = u; fallbackDbUrl = ''; roomId = r;
+    dbUrl = u; usingFallbackBackend = false; backendFailStreak = 0;
     saveJSON('sm_viewer_blobUrl', '');
-    saveJSON('sm_viewer_dbUrl', dbUrl);
+    saveJSON('sm_viewer_dbUrl', primaryDbUrl);
+    saveJSON('sm_viewer_inetUrl', '');
     saveJSON('sm_viewer_roomId', roomId);
     el.setupWrap.style.display = 'none';
     refreshChatAvailability();
@@ -531,7 +587,8 @@
     el.setupWrap.style.display = 'flex';
   } else {
     saveJSON('sm_viewer_blobUrl', blobUrl);
-    saveJSON('sm_viewer_dbUrl', dbUrl);
+    saveJSON('sm_viewer_dbUrl', primaryDbUrl);
+    saveJSON('sm_viewer_inetUrl', fallbackDbUrl);
     saveJSON('sm_viewer_roomId', roomId);
   }
 
@@ -1452,14 +1509,15 @@
     }
     // Browsers only expose the microphone (navigator.mediaDevices) on a
     // "secure context" -- an https page, or a page loaded from localhost/
-    // 127.0.0.1 itself. A Local Network Broadcast link opened at the app's
-    // real address (e.g. http://192.168.x.x:8765/...) is neither, on ANY
-    // browser -- so without this check, clicking Join Voice here silently
-    // does nothing (the microphone call throws before anything else runs).
-    // Chat and the countdown still work fine over that same link since
-    // fetch() has no such restriction -- only the microphone is blocked.
+    // 127.0.0.1 itself. The Local Broadcast app now always serves its
+    // links over https (a self-signed certificate; see that app's own
+    // docstring for why), which is itself a secure context, so this
+    // shouldn't come up on a current version of the app -- kept as a
+    // safety net for an older, plain-http build still running somewhere.
+    // Chat and the countdown still work fine over that same link either
+    // way since fetch() has no such restriction -- only the microphone is.
     if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-      alert("Can't use the microphone on this link — browsers only allow that over a secure (https) connection, or on the same computer running Local Broadcast. Crew Chat and the countdown still work here; for voice, use the usual internet link instead, or Crew Talk from the Local Broadcast computer itself.");
+      alert("Can't use the microphone on this link — browsers only allow that over a secure (https) connection, or on the same computer running Local Broadcast. Crew Chat and the countdown still work here. If you're on a Local Broadcast link, ask whoever's running the show to update to the latest Local Broadcast app (older versions block the microphone); otherwise use the usual internet link for voice instead.");
       return;
     }
     fetchTurnConfig().then(function(){
@@ -1613,15 +1671,17 @@
   function poll(){
     if(!haveSettings()) return;
     var url = fetchTargetUrl();
+    var liveLabelSuffix = (primaryDbUrl && fallbackDbUrl) ? (usingFallbackBackend ? ' (internet)' : '') : '';
     fetch(url, { cache: 'no-store' }).then(function(r){
       if(!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function(data){
+      reportBackendResult(true);
       lastFetchClientTime = Date.now();
       lastGoodFetchTime = lastFetchClientTime;
       if(data){
         lastPayload = data;
-        setConn('live', 'Live');
+        setConn('live', 'Live' + liveLabelSuffix);
         // Match whatever Day/Night theme the operator set for the show (and
         // its logo) instead of staying on this device's last-used theme --
         // unless this device already made its own choice via the Day/Night
@@ -1633,10 +1693,11 @@
         }
       } else {
         lastPayload = null;
-        setConn('live', 'Waiting for cue');
+        setConn('live', 'Waiting for cue' + liveLabelSuffix);
       }
       renderCrewChatLog();
     }).catch(function(){
+      reportBackendResult(false);
       setConn('error', 'Connection error');
     });
   }
