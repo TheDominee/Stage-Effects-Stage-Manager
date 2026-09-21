@@ -29,9 +29,13 @@ it — just download the ready-to-run file:
 Every show
 -----------
 1. Double-click the app.
-     - Mac, first time only: it'll say it's from an "unidentified
-       developer" — right-click (or Control-click) it and choose "Open"
-       instead of double-clicking, then confirm. Only needed once.
+     - Mac, first time only: it'll say Apple can't verify it and only
+       offer "Move to Trash" / "Done" — click Done, then open System
+       Settings -> Privacy & Security, scroll down to the Security
+       section, and click "Open Anyway" next to the app's name (you'll
+       need your password or Touch ID). Then double-click the app one
+       more time and click "Open" on the dialog that appears. Only
+       needed once — after that it opens normally.
      - Windows, first time only: it may show "Windows protected your PC" —
        click "More info", then "Run anyway". Only needed once.
 2. A window opens showing this computer's address and two QR codes (Crew /
