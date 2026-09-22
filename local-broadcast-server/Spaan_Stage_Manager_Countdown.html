@@ -1636,10 +1636,26 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   // failover block for the client-side half of this. Omitted entirely when
   // there's no internet broadcast configured (or it's the free "auto"
   // backend, which doesn't speak the same room/path shape) -- the local
-  // link then just works exactly as it always has, local-only.
+  // link then just works exactly as it always has, local-only. Used only by
+  // the dedicated "Local Direct Link" below (Setup -> Local Network
+  // Broadcast) -- the MAIN Copy Viewer/Crew Link buttons go the other way
+  // round now, see localFallbackParam().
   function inetFallbackParam(){
     if(bcSettings.mode !== 'advanced' || !bcSettings.dbUrl || !bcSettings.roomId) return '';
     return '&inet=' + encodeURIComponent(bcSettings.dbUrl);
+  }
+
+  // Appended to the MAIN internet link whenever Local Network Broadcast is
+  // also on, so that one link tries the internet FIRST -- reachable from
+  // anywhere, local or international, the instant Start Broadcasting is hit
+  // -- and only drops to this venue's own Wi-Fi if the internet backend
+  // stops answering (e.g. the venue's uplink goes down but its own local
+  // network/Wi-Fi keeps working). Erik's explicit call, 2026-09-22: internet
+  // is always tried first; the local network is the fallback, not the other
+  // way round.
+  function localFallbackParam(){
+    if(!bcSettings.localEnabled || !bcSettings.localUrl || !bcSettings.roomId) return '';
+    return '&local=' + encodeURIComponent(bcSettings.localUrl.replace(/\/+$/,''));
   }
 
   // Local Network Broadcast links — the Local Broadcast Server serves the
@@ -1657,27 +1673,34 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     return base + '/Spaan_Crew.html?db=' + encodeURIComponent(base) + '&room=' + encodeURIComponent(bcSettings.roomId) + inetFallbackParam();
   }
 
-  // The ONE link Erik actually hands out for each role. When Local Network
-  // Broadcast is turned on (the "Also broadcast to the local network"
-  // checkbox), this becomes the local link above -- already carrying the
-  // internet fallback baked in -- so there's a single Crew link and a
-  // single Viewer link that quietly do the right thing whether the venue
-  // has internet, only local Wi-Fi, or someone briefly has neither. With
-  // Local Network Broadcast off, this is unchanged from before: the plain
-  // internet link.
+  // The ONE link Erik actually hands out for each role. Internet is always
+  // tried first -- the page itself is hosted on the internet (GitHub Pages/
+  // Cloudflare), reachable the same whether the crew member is standing at
+  // the venue or on the other side of the world, and the live data reads
+  // from the internet Firebase first too. When Local Network Broadcast is
+  // also on, the link carries the venue's local address as a FALLBACK
+  // (&local=...) that viewer_template.html's failover logic drops to only
+  // if the internet backend stops answering -- e.g. the venue's internet
+  // uplink goes down but its own local Wi-Fi/network keeps working. Only
+  // when there's no internet-hosted page configured at all (a pure "local
+  // broadcast only" setup, or the field's been cleared) does this fall back
+  // to handing out the local-hosted link instead, so that setup keeps
+  // working exactly as before.
   function buildViewerLink(){
+    if(bcSettings.viewerUrl){
+      var base = bcSettings.viewerUrl.replace(/\?.*$/, '');
+      if(bcSettings.mode === 'advanced'){
+        if(bcSettings.dbUrl && bcSettings.roomId){
+          return base + '?db=' + encodeURIComponent(bcSettings.dbUrl) + '&room=' + encodeURIComponent(bcSettings.roomId) + localFallbackParam();
+        }
+      } else if(bcSettings.blobUrl){
+        return base + '?blob=' + encodeURIComponent(bcSettings.blobUrl);
+      }
+    }
     if(bcSettings.localEnabled && bcSettings.localUrl && bcSettings.roomId){
-      var localLink = buildLocalViewerLink();
-      if(localLink) return localLink;
+      return buildLocalViewerLink();
     }
-    if(!bcSettings.viewerUrl) return null;
-    var base = bcSettings.viewerUrl.replace(/\?.*$/, '');
-    if(bcSettings.mode === 'advanced'){
-      if(!bcSettings.dbUrl || !bcSettings.roomId) return null;
-      return base + '?db=' + encodeURIComponent(bcSettings.dbUrl) + '&room=' + encodeURIComponent(bcSettings.roomId);
-    }
-    if(!bcSettings.blobUrl) return null;
-    return base + '?blob=' + encodeURIComponent(bcSettings.blobUrl);
+    return null;
   }
 
   // Same link shape as the audience viewer, just pointing at the Crew page
@@ -1685,18 +1708,20 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   // way. Two-way chat on that page only works with the "advanced" (db/room)
   // link; a "blob" (auto mode) crew link still shows the timer, just no chat.
   function buildCrewLink(){
+    if(bcSettings.crewViewerUrl){
+      var base = bcSettings.crewViewerUrl.replace(/\?.*$/, '');
+      if(bcSettings.mode === 'advanced'){
+        if(bcSettings.dbUrl && bcSettings.roomId){
+          return base + '?db=' + encodeURIComponent(bcSettings.dbUrl) + '&room=' + encodeURIComponent(bcSettings.roomId) + localFallbackParam();
+        }
+      } else if(bcSettings.blobUrl){
+        return base + '?blob=' + encodeURIComponent(bcSettings.blobUrl);
+      }
+    }
     if(bcSettings.localEnabled && bcSettings.localUrl && bcSettings.roomId){
-      var localCrewLink = buildLocalCrewLink();
-      if(localCrewLink) return localCrewLink;
+      return buildLocalCrewLink();
     }
-    if(!bcSettings.crewViewerUrl) return null;
-    var base = bcSettings.crewViewerUrl.replace(/\?.*$/, '');
-    if(bcSettings.mode === 'advanced'){
-      if(!bcSettings.dbUrl || !bcSettings.roomId) return null;
-      return base + '?db=' + encodeURIComponent(bcSettings.dbUrl) + '&room=' + encodeURIComponent(bcSettings.roomId);
-    }
-    if(!bcSettings.blobUrl) return null;
-    return base + '?blob=' + encodeURIComponent(bcSettings.blobUrl);
+    return null;
   }
 
   // Keeps the visible, click-to-select link box in sync with whatever this
@@ -1704,11 +1729,18 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   // and share the *right* link when several computers are each broadcasting
   // their own show, since every computer's box always shows its own link.
   function updateLinkDisplay(){
-    var usingUnifiedLocalLink = !!(bcSettings.localEnabled && bcSettings.localUrl && bcSettings.roomId && buildLocalViewerLink());
+    // Internet is always tried first now (see buildViewerLink()) -- these
+    // just work out which of the three states the MAIN link is actually in,
+    // to describe it accurately here.
+    var mainLinkIsInternetPrimary = !!(bcSettings.viewerUrl && ((bcSettings.mode === 'advanced' && bcSettings.dbUrl && bcSettings.roomId) || (bcSettings.mode !== 'advanced' && bcSettings.blobUrl)));
+    var mainLinkHasLocalFallback = mainLinkIsInternetPrimary && !!localFallbackParam();
+    var usingLocalOnlyLink = !mainLinkIsInternetPrimary && !!(bcSettings.localEnabled && bcSettings.localUrl && bcSettings.roomId && buildLocalViewerLink());
     if(el.bcPublicLinkHint){
-      el.bcPublicLinkHint.textContent = usingUnifiedLocalLink
-        ? '(works over this venue’s Wi-Fi, falls back to the internet automatically — outside viewers need no login)'
-        : '(needs internet — outside viewers need no login)';
+      el.bcPublicLinkHint.textContent = mainLinkHasLocalFallback
+        ? '(works anywhere with internet, falls back to this venue’s Wi-Fi automatically if the internet drops — outside viewers need no login)'
+        : usingLocalOnlyLink
+          ? '(works only over this venue’s Wi-Fi — no internet address set up, so there’s no fallback)'
+          : '(needs internet — outside viewers need no login)';
     }
     var link = buildViewerLink();
     if(link){
@@ -2509,10 +2541,16 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   // pick them up automatically without needing their own settings screen.
   // Harmless no-op if TURN fields are empty or Crew Chat isn't configured.
   function publishTurnConfig(){
-    if(bcSettings.mode !== 'advanced' || !bcSettings.dbUrl || !bcSettings.roomId) return;
-    var url = bcSettings.dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(bcSettings.roomId) + '/voiceTurn.json';
+    // Dual-write, same as the rest of Crew Talk -- otherwise a crew member
+    // reached through the LOCAL broadcast server never sees the TURN relay
+    // Erik configured (it used to only go to the internet backend), and
+    // would silently fall back to STUN-only. STUN alone usually still works
+    // fine for two devices on the same venue Wi-Fi, but not on a "guest"
+    // network with client isolation turned on, or a crew phone hopping onto
+    // its own hotspot -- this is exactly the safety net TURN is for.
+    if(!bcSettings.roomId) return;
     var payload = bcSettings.turnUrl ? { url: bcSettings.turnUrl, username: bcSettings.turnUsername || '', credential: bcSettings.turnCredential || '' } : null;
-    fetch(url, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) }).catch(function(){});
+    dualPut('/voiceTurn.json', payload);
   }
   var voiceJoined = false;
   var transmitting = false;

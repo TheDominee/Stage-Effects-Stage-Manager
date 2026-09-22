@@ -503,15 +503,27 @@
   applyTheme();
 
   /* ---- connection settings: URL query params win, else localStorage ----
-     Three link shapes:
-     - ?blob=<url>                    -- auto mode: a single ready-made JSON store URL
-     - ?db=<url>&room=<id>            -- advanced mode: the sender's own Firebase project
-     - ?db=<local>&inet=<url>&room=<id> -- one Local Broadcast link that also carries an
-       internet fallback (see the failover block just below) */
+     Four link shapes:
+     - ?blob=<url>                       -- auto mode: a single ready-made JSON store URL
+     - ?db=<url>&room=<id>               -- advanced mode: the sender's own Firebase project,
+       no fallback at all
+     - ?db=<internet>&local=<venue>&room=<id> -- the MAIN link Erik hands out: internet is
+       primary (works the same whether this phone is at the venue or on the other side of
+       the world), the venue's own Local Broadcast address is the fallback if the internet
+       backend stops answering (see the failover block just below)
+     - ?db=<local>&inet=<internet>&room=<id> -- the separate "Local Direct Link" (Setup ->
+       Local Network Broadcast): the opposite order, local primary/internet fallback, for a
+       venue that wants a link that still works with zero internet at all */
   var qs = new URLSearchParams(location.search);
   var blobUrl = qs.get('blob') || loadJSON('sm_viewer_blobUrl', '');
   var primaryDbUrl = qs.get('db') || loadJSON('sm_viewer_dbUrl', '');
-  var fallbackDbUrl = qs.get('inet') || loadJSON('sm_viewer_inetUrl', '');
+  var fallbackFromLocalParam = qs.get('local');
+  var fallbackFromInetParam = qs.get('inet');
+  var fallbackDbUrl = fallbackFromLocalParam || fallbackFromInetParam || loadJSON('sm_viewer_inetUrl', '');
+  // Which kind of fallback this particular link carries -- both work exactly
+  // the same mechanically (see below), this only affects the on-screen "using
+  // the fallback" label further down, so it says the right network.
+  var fallbackIsLocalNetwork = fallbackFromLocalParam ? true : fallbackFromInetParam ? false : loadJSON('sm_viewer_fallbackIsLocal', false);
   var roomId = qs.get('room') || loadJSON('sm_viewer_roomId', '');
 
   /* ---- automatic local/internet failover ----
@@ -519,15 +531,16 @@
      one -- every fetch/write everywhere else in this file reads dbUrl live
      at call time, so switching backends is just reassigning this one
      variable; nothing downstream needs to know a switch happened.
-     primaryDbUrl (the local broadcast computer, when this link came from
-     one) is always preferred: lower latency, and it's the only one that
-     still works with zero internet at the venue. fallbackDbUrl (the
-     internet/Firebase project) takes over automatically the moment primary
-     stops answering -- e.g. this phone walks out of the venue Wi-Fi -- and
-     control switches back the moment primary answers again, e.g. walking
-     back in range. No manual switching, no second link. A link with only
-     one of the two behaves exactly as before -- nothing to fail over
-     to/from. */
+     primaryDbUrl is always preferred -- which network that actually IS
+     (internet, or the venue's own Local Broadcast) depends on which link was
+     shared: the main link (?db=<internet>&local=<venue>) tries the internet
+     first, reachable the same locally or internationally; the separate
+     Local Direct Link (?db=<local>&inet=<internet>) goes the other way for a
+     venue with no internet at all. Either way, fallbackDbUrl takes over
+     automatically the moment primary stops answering, and control switches
+     back the moment primary answers again -- no manual switching, no second
+     link. A link with only one of the two behaves exactly as before --
+     nothing to fail over to/from. */
   var dbUrl = primaryDbUrl || fallbackDbUrl;
   var usingFallbackBackend = !primaryDbUrl && !!fallbackDbUrl;
   var backendFailStreak = 0;
@@ -575,11 +588,12 @@
     var u = el.setupDbUrl.value.trim(), r = el.setupRoomId.value.trim();
     if(!u || !r){ alert('Enter both the database URL and room ID.'); return; }
     blobUrl = '';
-    primaryDbUrl = u; fallbackDbUrl = ''; roomId = r;
+    primaryDbUrl = u; fallbackDbUrl = ''; fallbackIsLocalNetwork = false; roomId = r;
     dbUrl = u; usingFallbackBackend = false; backendFailStreak = 0;
     saveJSON('sm_viewer_blobUrl', '');
     saveJSON('sm_viewer_dbUrl', primaryDbUrl);
     saveJSON('sm_viewer_inetUrl', '');
+    saveJSON('sm_viewer_fallbackIsLocal', false);
     saveJSON('sm_viewer_roomId', roomId);
     el.setupWrap.style.display = 'none';
     refreshChatAvailability();
@@ -592,6 +606,7 @@
     saveJSON('sm_viewer_blobUrl', blobUrl);
     saveJSON('sm_viewer_dbUrl', primaryDbUrl);
     saveJSON('sm_viewer_inetUrl', fallbackDbUrl);
+    saveJSON('sm_viewer_fallbackIsLocal', fallbackIsLocalNetwork);
     saveJSON('sm_viewer_roomId', roomId);
   }
 
@@ -1674,7 +1689,7 @@
   function poll(){
     if(!haveSettings()) return;
     var url = fetchTargetUrl();
-    var liveLabelSuffix = (primaryDbUrl && fallbackDbUrl) ? (usingFallbackBackend ? ' (internet)' : '') : '';
+    var liveLabelSuffix = (primaryDbUrl && fallbackDbUrl) ? (usingFallbackBackend ? (fallbackIsLocalNetwork ? ' (local network)' : ' (internet)') : '') : '';
     fetch(url, { cache: 'no-store' }).then(function(r){
       if(!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();

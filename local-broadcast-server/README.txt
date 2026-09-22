@@ -14,10 +14,13 @@ is struggling under a crowd.
 
 Since a recent update, the Crew and Viewer links you hand out only need to
 be ONE link each (not a separate "internet" and "local" link) — when Local
-Network Broadcast is turned on in Stage Manager, that one link automatically
-uses the local network while you're on the venue Wi-Fi, and quietly falls
-back to the internet the moment a phone leaves range (or switches back the
-moment it returns) — no manual switching, nothing to re-send.
+Network Broadcast is turned on in Stage Manager, that one link always tries
+the internet first (it works the same whether someone's at the venue or on
+the other side of the world), and quietly drops to this local broadcast the
+moment the internet stops answering — e.g. the venue's own internet drops
+out but its Wi-Fi/local network keeps working — then switches back the
+moment the internet is reachable again. No manual switching, nothing to
+re-send.
 
 Stage Effects and Spaan are two separate apps
 ------------------------------------------------
@@ -66,25 +69,28 @@ Every show
    default) — click through it (e.g. "Advanced" → "Proceed"/"visit this
    website") once. It won't ask again on that device for this computer,
    even across different shows/networks.
-4. In Stage Manager's Setup page, open "Local Network Broadcast". If Stage
-   Manager is running on this same computer, it should find the app on its
-   own and offer to turn it on with one click. Otherwise, type in the
-   address shown in the app's window (now starting with https://) and tick
-   "Also broadcast to the local network".
+4. If Stage Manager is running on this same computer, it finds this app on
+   its own and switches it on for you — nothing to open or tick on the
+   Setup page. (Running Stage Manager on a different computer than this
+   app? Then open Setup → "Local Network Broadcast" there once, and type in
+   the address shown in this app's window.)
 5. Click "Start Broadcasting" as usual (or turn it on if it's already on)
    — it now sends to both the internet and this local broadcast at once.
-   The "Copy Viewer Link"/"Copy Crew Link" buttons up top now hand out the
-   one combined link described above.
+   The "Copy Viewer Link"/"Copy Crew Link" buttons hand out the one
+   combined link described above — that's the only link you ever need to
+   send anyone.
 6. Hand crew the QR code from the app's window for the page they need
-   (Crew or Viewer), or use its Copy Link buttons.
+   (Crew or Viewer), or use the Copy Link buttons in Stage Manager.
 
 Notes
 ------
 - This only reaches devices on the SAME Wi-Fi/network as this computer.
-  Crew off-site or on mobile data automatically fall back to the internet
-  link instead, as long as an internet broadcast is also running (see
-  above) — with no internet broadcast configured, local-only is all there
-  is, same as before.
+  Everyone's one link tries the internet first regardless of where they
+  are, so crew off-site or on mobile data just use that normally — this
+  local broadcast only comes into play as the automatic fallback if the
+  internet drops for someone who IS on this same Wi-Fi/network, as long as
+  an internet broadcast is also running (see above). With no internet
+  broadcast configured, local-only is all there is, same as before.
 - The app rechecks its address every few seconds, so if this computer
   changes networks mid-show its window will update — re-share the QR if
   that happens. A brand new network (venue this computer has never
