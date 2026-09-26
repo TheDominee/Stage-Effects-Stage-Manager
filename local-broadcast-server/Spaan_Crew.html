@@ -631,6 +631,10 @@
   var chatLastSeenTs = Date.now();
   var otherCrewRoster = [];
   var crewMentionPicker = null;
+  // Message ids this device itself has sent -- excluded from the unread
+  // count/badge below so sending a message never flags it as "unread" to
+  // the sender once it round-trips back through the next poll.
+  var ownSentMsgIds = {};
 
   function chatWritable(){ return ENABLE_CREW_CHAT && !blobUrl && !!dbUrl && !!roomId; }
 
@@ -660,6 +664,7 @@
     if(!text && !imageDataUrl) return;
     var label = (loadJSON('sm_crew_name','') || '').toString().trim().slice(0,40) || 'Crew';
     var id = genMsgId();
+    ownSentMsgIds[id] = true;
     el.chatMsgInput.value = '';
     if(crewMentionPicker) crewMentionPicker.hide();
     var url = dbUrl.replace(/\/+$/,'') + '/broadcasts/' + encodeURIComponent(roomId) + '/crewMsgs/' + id + '.json';
@@ -784,7 +789,9 @@
     var unread = 0;
     Object.keys(msgs).forEach(function(id){
       var m = msgs[id];
-      if(m && m.from === 'sm' && (m.ts||0) > chatLastSeenTs) unread++;
+      // Any new message counts as unread -- from the Stage Manager or from
+      // other crew -- except one this same device just sent itself.
+      if(m && !ownSentMsgIds[id] && (m.ts||0) > chatLastSeenTs) unread++;
     });
     if(unread > 0){
       el.chatBadge.style.display = 'flex';
@@ -1462,10 +1469,10 @@
   // ===== SYNC BLOCK END: voiceGroups =====
 
   function renderVoiceTargets(){
-    var chips = [{ id: 'everyone', name: 'Everyone' }].concat(voiceRoster);
+    var nameChips = [{ id: 'everyone', name: 'Everyone' }].concat(voiceRoster);
     var groupChips = voiceGroupsOrder.map(function(id){ return { id: 'group:' + id, name: voiceGroups[id].name, isGroup: true, count: (voiceGroups[id].members||[]).length }; });
     el.voiceTargetRow.innerHTML = '';
-    chips.forEach(function(c){
+    function addNameChip(c){
       var chip = document.createElement('div');
       chip.className = 'voice-target-chip' + (talkTarget === c.id ? ' active' : '');
       if(c.id !== 'everyone'){
@@ -1484,7 +1491,12 @@
         renderVoiceTargets();
       });
       el.voiceTargetRow.appendChild(chip);
-    });
+    }
+    // "Everyone" always leads (it's the default/most-used target), then any
+    // Talk Groups that have been created, THEN individual crew names -- so a
+    // whole department can be picked at a glance without scrolling past
+    // everyone's name first.
+    addNameChip(nameChips[0]);
     groupChips.forEach(function(c){
       var chip = document.createElement('div');
       chip.className = 'voice-target-chip voice-target-chip-group' + (talkTarget === c.id ? ' active' : '');
@@ -1499,6 +1511,7 @@
       });
       el.voiceTargetRow.appendChild(chip);
     });
+    nameChips.slice(1).forEach(addNameChip);
     // No separate status line in the docked bar (keeps its height fixed) —
     // each chip's dot already shows that person's connection state.
   }
@@ -2058,7 +2071,28 @@
     pollTimer = setInterval(poll, 2000);
     tickTimer = setInterval(render, 1000);
     startHeartbeat();
+    requestWakeLock();
   }
+
+  /* ---- Screen Wake Lock: keeps the phone/tablet screen from sleeping while
+     someone is watching the broadcast countdown -- crew often prop a phone
+     up during a show, and a locked screen would hide the timer at the worst
+     moment. Uses the standard Wake Lock API (supported on iOS Safari 16.4+,
+     Android Chrome, and all modern desktop browsers); silently does nothing
+     on anything older -- there's no reliable cross-browser fallback worth
+     the added complexity. The OS always releases the lock when the tab/app
+     goes to the background, so it's re-requested on visibilitychange. ---- */
+  var wakeLock = null;
+  function requestWakeLock(){
+    if(!('wakeLock' in navigator)) return;
+    navigator.wakeLock.request('screen').then(function(lock){
+      wakeLock = lock;
+      wakeLock.addEventListener('release', function(){ wakeLock = null; });
+    }).catch(function(){ /* denied (e.g. battery saver) or not allowed in this context -- fine, just no lock */ });
+  }
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState === 'visible' && !wakeLock) requestWakeLock();
+  });
 
   /* ---- presence heartbeat: lets the sender's control page show a live
      viewer count. Only supported for the "advanced" Firebase backend (?db=&room=) —
