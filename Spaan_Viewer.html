@@ -2058,7 +2058,28 @@
     pollTimer = setInterval(poll, 2000);
     tickTimer = setInterval(render, 1000);
     startHeartbeat();
+    requestWakeLock();
   }
+
+  /* ---- Screen Wake Lock: keeps the phone/tablet screen from sleeping while
+     someone is watching the broadcast countdown -- crew often prop a phone
+     up during a show, and a locked screen would hide the timer at the worst
+     moment. Uses the standard Wake Lock API (supported on iOS Safari 16.4+,
+     Android Chrome, and all modern desktop browsers); silently does nothing
+     on anything older -- there's no reliable cross-browser fallback worth
+     the added complexity. The OS always releases the lock when the tab/app
+     goes to the background, so it's re-requested on visibilitychange. ---- */
+  var wakeLock = null;
+  function requestWakeLock(){
+    if(!('wakeLock' in navigator)) return;
+    navigator.wakeLock.request('screen').then(function(lock){
+      wakeLock = lock;
+      wakeLock.addEventListener('release', function(){ wakeLock = null; });
+    }).catch(function(){ /* denied (e.g. battery saver) or not allowed in this context -- fine, just no lock */ });
+  }
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState === 'visible' && !wakeLock) requestWakeLock();
+  });
 
   /* ---- presence heartbeat: lets the sender's control page show a live
      viewer count. Only supported for the "advanced" Firebase backend (?db=&room=) —
