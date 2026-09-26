@@ -2107,6 +2107,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       armed: timerArmed(),
       running: running,
       remaining: remaining,
+      totalDuration: currentTotalForProgress(),
       upAlertAt: upAlertAt,
       warnAt: (bcCue && typeof bcCue.warnAt === 'number' && bcCue.warnAt > 0) ? bcCue.warnAt : 60,
       messageMode: messageMode,
@@ -4016,21 +4017,35 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     return 60;
   }
 
-  // Extended Display countdown color: a continuous green -> red gradient as
-  // the clock gets closer to its end time (Erik, 2026-09-26), instead of the
-  // old flat "normal, then orange in the last minute" look. frac is 1 at the
-  // very start of the loaded time and 0 right at zero (and clamps there for
-  // any overrun -- overrun's own look is the flashing red alarm, handled
-  // separately). Same green/red pair used elsewhere in this theme
-  // (performance-green / danger-red), with a slightly deeper pair for the
-  // light display so it still reads clearly on a white background.
-  var PRESENTER_GRADIENT_DARK = { green: [63,208,127], red: [255,26,26] };
-  var PRESENTER_GRADIENT_LIGHT = { green: [31,138,72], red: [196,55,43] };
-  function presenterCountdownColor(frac){
+  // ===== SYNC BLOCK START: gradientColorAt =====
+  // Extended Display / broadcast countdown color AND the matching progress
+  // bar underneath it: a continuous green -> orange -> red gradient as the
+  // clock gets closer to its end time (Erik, 2026-09-26), instead of the old
+  // flat "normal, then orange in the last minute" look -- and both the text
+  // and the bar always use this same function, so their colors are always
+  // in sync with each other. frac is 1 at the very start of the loaded time,
+  // 0.5 at the halfway point, and 0 right at zero (and clamps there for any
+  // overrun -- overrun's own look is the flashing red alarm, handled
+  // separately). Same green/orange/red triples used elsewhere in this theme
+  // (performance-green / warn-orange / danger-red), with a slightly deeper
+  // set for the light display so they still read clearly on white. This
+  // exact block also lives in template.html (the SM's own Extended Display
+  // popup) -- if you change the logic here, copy the same change over there
+  // too, and vice versa, so the colors always match between the two.
+  var GRADIENT_STOPS_DARK = { green: [63,208,127], orange: [255,149,0], red: [255,26,26] };
+  var GRADIENT_STOPS_LIGHT = { green: [31,138,72], orange: [138,84,16], red: [196,55,43] };
+  function gradientColorAt(frac, theme){
     frac = Math.max(0, Math.min(1, frac));
-    var pair = presenterTheme === 'light' ? PRESENTER_GRADIENT_LIGHT : PRESENTER_GRADIENT_DARK;
-    var rgb = [0,1,2].map(function(i){ return Math.round(pair.red[i] + (pair.green[i]-pair.red[i])*frac); });
+    var s = theme === 'light' ? GRADIENT_STOPS_LIGHT : GRADIENT_STOPS_DARK;
+    var a, b, t;
+    if(frac >= 0.5){ a = s.orange; b = s.green; t = (frac - 0.5) / 0.5; }
+    else { a = s.red; b = s.orange; t = frac / 0.5; }
+    var rgb = [0,1,2].map(function(i){ return Math.round(a[i] + (b[i]-a[i])*t); });
     return 'rgb(' + rgb.join(',') + ')';
+  }
+  // ===== SYNC BLOCK END: gradientColorAt =====
+  function presenterCountdownColor(frac){
+    return gradientColorAt(frac, presenterTheme);
   }
   // The same 0..1 "how much of the loaded time is left" fraction the
   // progress bar uses, just also valid for Count Up mode (against its
@@ -4475,6 +4490,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     '#stage.alarm{animation:flashRed .9s steps(2,jump-none) infinite;}'+
     '#stage.alarm #actName, #stage.alarm #countdown, #stage.alarm #nextLine, #stage.alarm #showLabel{color:#fff !important;text-shadow:0 2px 6px rgba(0,0,0,.6);}'+
     '#idleMsg{color:var(--p-idle);font-size:22px;letter-spacing:2px;text-transform:uppercase;}'+
+    '#progressTrack{position:fixed;left:0;right:0;bottom:0;height:10px;background:rgba(128,128,128,.18);z-index:1;}'+
+    '#progressFill{height:100%;width:0%;transition:width .3s linear,background-color .4s linear;}'+
     '#messageOverlay{display:none;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:0 70px;background:#FF9500;}'+'#stage.msg-active #messageText{color:#131F1B;}'+
     '#messageText{font-size:min(9vw,120px);font-weight:800;color:#131F1B;text-align:center;max-width:90vw;line-height:1.15;word-wrap:break-word;font-family:"Big Shoulders Display","Archivo",sans-serif;}'+
     '#messageSubTimeWrap{display:none;flex-direction:column;align-items:center;gap:6px;padding-top:6px;border-top:2px solid rgba(128,128,128,.25);}'+
@@ -4499,6 +4516,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       '<div id="messageOverlay"><div id="messageText"></div>'+
         '<div id="messageSubTimeWrap"><div id="messageSubTimeLabel">Time Remaining</div><div id="messageSubTime">00:00:00</div></div>'+
       '</div>'+
+      '<div id="progressTrack"><div id="progressFill"></div></div>'+
     '</div>'+
     '</body></html>';
   }
@@ -4578,6 +4596,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       nextLineEl0.style.display = 'none';
       overrunEl0.classList.remove('show');
       stageEl0.classList.toggle('alarm', messageFlashing);
+      var msgProgFillEl = d.getElementById('progressFill');
+      if(msgProgFillEl) msgProgFillEl.style.width = '0%';
 
       var subWrap = d.getElementById('messageSubTimeWrap');
       var subTime = d.getElementById('messageSubTime');
@@ -4634,20 +4654,32 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     cdEl.classList.remove('warn','danger');
     var stageEl = d.getElementById('stage');
     var overrunEl = d.getElementById('overrunTag');
+    var progFillEl = d.getElementById('progressFill');
 
     if(!timerArmed()){
       stageEl.classList.remove('alarm');
       overrunEl.classList.remove('show');
       alarmBurstOn(false);
       cdEl.style.color = '';
+      if(progFillEl) progFillEl.style.width = '0%';
     } else {
-      // Continuous green -> red as the clock gets closer to its end time,
-      // instead of a flat color that only jumps to orange in the final
-      // stretch. null (Count Up with no allocated-time target set) leaves
-      // the countdown its normal default color -- there's no "end" to
-      // gauge against.
+      // Continuous green -> orange -> red as the clock gets closer to its
+      // end time, instead of a flat color that only jumps to orange in the
+      // final stretch -- driving both the countdown text AND the progress
+      // bar underneath it from the same fraction, so they always agree.
+      // null (Count Up with no allocated-time target set) leaves the
+      // countdown its normal default color and hides the bar -- there's no
+      // "end" to gauge against.
       var frac = presenterCountdownFrac();
       cdEl.style.color = (frac === null) ? '' : presenterCountdownColor(frac);
+      if(progFillEl){
+        if(frac === null){
+          progFillEl.style.width = '0%';
+        } else {
+          progFillEl.style.width = (Math.max(0, Math.min(1, frac)) * 100) + '%';
+          progFillEl.style.background = presenterCountdownColor(frac);
+        }
+      }
       if(isFreeRunUp()){
         var elapsedUp = Math.abs(remaining);
         if(upAlertAt > 0 && elapsedUp >= upAlertAt){
