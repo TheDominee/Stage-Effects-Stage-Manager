@@ -101,6 +101,9 @@
      the identical flash on it, in lockstep with #stage's own animation. */
   #stage.alarm ~ #voiceBar{animation:flashRed .9s steps(2,jump-none) infinite;border-top-color:rgba(255,255,255,.35);}
   #idleMsg{color:var(--idle);font-size:20px;letter-spacing:2px;text-transform:uppercase;}
+  #progressTrack{position:fixed;left:0;right:0;bottom:0;height:8px;background:rgba(128,128,128,.18);z-index:1;}
+  #stage.has-crew-bar #progressTrack{bottom:var(--voicebar-h);}
+  #progressFill{height:100%;width:0%;transition:width .3s linear,background-color .4s linear;}
   #messageOverlay{display:none;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:0 60px;}
   #messageText{font-size:min(8.5vw,110px);font-weight:800;color:var(--text);text-align:center;max-width:90vw;line-height:1.15;word-wrap:break-word;}
   #messageSubTimeWrap{display:none;flex-direction:column;align-items:center;gap:5px;padding-top:5px;border-top:2px solid rgba(128,128,128,.25);}
@@ -339,6 +342,7 @@
     <div id="messageSubTimeWrap"><div id="messageSubTimeLabel">Time Remaining</div><div id="messageSubTime">00:00:00</div></div>
   </div>
   <div id="connDot"><span class="dot"></span><span id="connText">Connecting</span></div>
+  <div id="progressTrack"><div id="progressFill"></div></div>
 </div>
 
 <div id="setupWrap">
@@ -437,6 +441,7 @@
     messageSubTime: document.getElementById('messageSubTime'),
     connDot: document.getElementById('connDot'),
     connText: document.getElementById('connText'),
+    progressFill: document.getElementById('progressFill'),
     setupWrap: document.getElementById('setupWrap'),
     setupDbUrl: document.getElementById('setupDbUrl'),
     setupRoomId: document.getElementById('setupRoomId'),
@@ -1743,6 +1748,43 @@
     return ((Date.now() - alarmBurstSince) % 12000) < 3000;
   }
 
+  // ===== SYNC BLOCK START: gradientColorAt =====
+  // Broadcast countdown color AND the matching progress bar underneath it: a
+  // continuous green -> orange -> red gradient as the clock gets closer to
+  // its end time (Erik, 2026-09-26) -- same look and same function as the
+  // Stage Manager's own Extended Display, so the colors always match
+  // between the two. frac is 1 at the very start of the loaded time, 0.5
+  // halfway, and 0 right at zero (and clamps there for any overrun --
+  // overrun's own look is the flashing red alarm, handled separately). This
+  // exact block also lives in template.html -- if you change the logic
+  // here, copy the same change over there too, and vice versa.
+  var GRADIENT_STOPS_DARK = { green: [63,208,127], orange: [255,149,0], red: [255,26,26] };
+  var GRADIENT_STOPS_LIGHT = { green: [31,138,72], orange: [138,84,16], red: [196,55,43] };
+  function gradientColorAt(frac, gtheme){
+    frac = Math.max(0, Math.min(1, frac));
+    var s = gtheme === 'light' ? GRADIENT_STOPS_LIGHT : GRADIENT_STOPS_DARK;
+    var a, b, t;
+    if(frac >= 0.5){ a = s.orange; b = s.green; t = (frac - 0.5) / 0.5; }
+    else { a = s.red; b = s.orange; t = frac / 0.5; }
+    var rgb = [0,1,2].map(function(i){ return Math.round(a[i] + (b[i]-a[i])*t); });
+    return 'rgb(' + rgb.join(',') + ')';
+  }
+  // ===== SYNC BLOCK END: gradientColorAt =====
+
+  // Same 0..1 "how much of the loaded time is left" fraction the Stage
+  // Manager's own progress bar uses (null when there's nothing to gauge
+  // against -- Count Up with no allocated-time target set).
+  function countdownFrac(){
+    if(!lastPayload) return null;
+    if(isFreeRunUp()){
+      var upAlertAtF = lastPayload.upAlertAt || 0;
+      if(upAlertAtF <= 0) return null;
+      return 1 - (Math.abs(currentRemaining()) / upAlertAtF);
+    }
+    var total = lastPayload.totalDuration || 0;
+    return total > 0 ? (currentRemaining() / total) : 0;
+  }
+
   /* The actual vertical room #stage has to lay out its content — window
      height minus its own top/bottom padding, which includes the docked Crew
      Talk bar's reserved space on the crew link (see #stage.has-crew-bar).
@@ -1864,6 +1906,7 @@
       el.nextLine.style.display = 'none';
       el.stage.classList.remove('alarm');
       el.showLabel.textContent = '';
+      if(el.progressFill) el.progressFill.style.width = '0%';
       return;
     }
 
@@ -1900,6 +1943,7 @@
       } else {
         el.messageSubTimeWrap.style.display = 'none';
       }
+      if(el.progressFill) el.progressFill.style.width = '0%';
       return;
     }
 
@@ -1933,6 +1977,23 @@
     }
 
     el.countdown.classList.remove('warn','danger');
+
+    // Continuous green -> orange -> red as the clock gets closer to its end
+    // time, matching the Extended Display -- driving both the countdown text
+    // AND the progress bar underneath it from the same fraction, so they
+    // always agree. null (Count Up with no allocated-time target set) leaves
+    // the countdown its normal default color and hides the bar.
+    var frac = armed ? countdownFrac() : null;
+    el.countdown.style.color = (frac === null) ? '' : gradientColorAt(frac, theme);
+    if(el.progressFill){
+      if(frac === null){
+        el.progressFill.style.width = '0%';
+      } else {
+        el.progressFill.style.width = (Math.max(0, Math.min(1, frac)) * 100) + '%';
+        el.progressFill.style.background = gradientColorAt(frac, theme);
+      }
+    }
+
     if(!armed){
       el.stage.classList.remove('alarm');
       el.overrunTag.classList.remove('show');
