@@ -1948,7 +1948,7 @@
         el.overrunTag.classList.add('show');
         var overByV = elapsedUpV - upAlertAtV;
         el.overrunTag.textContent = overByV > 0 ? ('OVER BY ' + fmt(overByV)) : "TIME'S UP";
-        el.stage.classList.toggle('alarm', alarmBurstOn(true));
+        el.stage.classList.toggle('alarm', alarmBurstOn(true) && !lastPayload.alarmSilenced);
       } else if(upAlertAtV > 0 && elapsedUpV >= upAlertAtV - (lastPayload.warnAt || 60)){
         el.countdown.classList.add('warn');
         el.stage.classList.remove('alarm');
@@ -1964,7 +1964,7 @@
       el.countdown.classList.add('danger');
       el.overrunTag.classList.add('show');
       el.overrunTag.textContent = remaining < -0.5 ? ('OVER BY ' + fmt(Math.abs(remaining))) : "TIME'S UP";
-      el.stage.classList.toggle('alarm', alarmBurstOn(true));
+      el.stage.classList.toggle('alarm', alarmBurstOn(true) && !lastPayload.alarmSilenced);
       el.countdown.textContent = fmt(remaining);
     } else {
       el.stage.classList.remove('alarm');
