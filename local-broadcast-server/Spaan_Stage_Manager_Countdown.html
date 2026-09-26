@@ -269,6 +269,26 @@
 
   .adjust-row{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:14px;}
 
+  .scrub-row{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+  .scrub-row .scrub-label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);font-weight:700;white-space:nowrap;}
+  .scrub-row input[type=range]{
+    flex:1;-webkit-appearance:none;appearance:none;height:5px;border-radius:0;
+    background:var(--track-bg);outline:none;
+  }
+  .scrub-row input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;width:17px;height:17px;border-radius:50%;
+    background:var(--gold-2);border:2px solid var(--panel-bg);box-shadow:0 0 0 1px var(--gold);cursor:pointer;
+  }
+  .scrub-row input[type=range]::-moz-range-thumb{
+    width:17px;height:17px;border-radius:50%;background:var(--gold-2);border:2px solid var(--panel-bg);
+    box-shadow:0 0 0 1px var(--gold);cursor:pointer;
+  }
+
+  .stop-flash-row{display:flex;justify-content:center;margin-bottom:14px;}
+  .stop-flash-row[hidden]{display:none;}
+  .stop-flash-row .btn{border-color:#FF6B60;color:#FF6B60;}
+  .stop-flash-row .btn:hover{background:#FF6B60;color:#131F1B;}
+
   .quick-clock-row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:-6px 0 14px;}
   .quick-clock-row .btn:disabled{opacity:.4;cursor:not-allowed;}
 
@@ -748,6 +768,15 @@
         <button class="btn small" data-adj="60">+1m</button>
       </div>
 
+      <div class="scrub-row" id="scrubRow" title="Drag to scrub through the current time">
+        <span class="scrub-label">Scrub</span>
+        <input type="range" id="timeScrub" min="0" max="300" step="1" value="0" aria-label="Scrub through the countdown time">
+      </div>
+
+      <div class="stop-flash-row" id="stopFlashRow" hidden>
+        <button class="btn small red" id="stopFlashBtn">&#9632; Stop Flash</button>
+      </div>
+
       <div class="main-controls">
         <button class="btn green" id="startBtn">&#9654; Start</button>
         <button class="btn gold" id="pauseBtn" disabled>&#10074;&#10074; Pause</button>
@@ -1084,6 +1113,14 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   var running = false;
   var tickHandle = null;
   var alarmActive = false;
+  // Lets Erik silence the flashing red overrun alarm (on the Extended Display
+  // and every Crew/Viewer broadcast page) once a cue has gone over, without
+  // stopping the clock or hiding the red "OVER BY..." text/color -- see the
+  // Stop Flash button and isAlarmingNow()/updateStopFlashUI() below. Reset to
+  // false at every point that re-arms alarmActive, so a fresh cue or a fresh
+  // Start always gets its own flash back.
+  var alarmSilenced = false;
+  var sliderDragging = false; // true while the time-scrub slider is being dragged
   // The big full-screen flash (on the extended display and Crew/Viewer
   // pages) used to stay lit continuously for as long as a cue ran over --
   // distracting to look at through a whole long overrun. Instead it now
@@ -1144,6 +1181,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     doorsCountdownRow: document.getElementById('doorsCountdownRow'),
     countToDoorsBtn: document.getElementById('countToDoorsBtn'),
     countToShowStartBtn: document.getElementById('countToShowStartBtn'),
+    timeScrub: document.getElementById('timeScrub'),
+    stopFlashRow: document.getElementById('stopFlashRow'),
+    stopFlashBtn: document.getElementById('stopFlashBtn'),
     startBtn: document.getElementById('startBtn'),
     pauseBtn: document.getElementById('pauseBtn'),
     resetBtn: document.getElementById('resetBtn'),
@@ -2079,6 +2119,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       messageMode: messageMode,
       message: currentMessage,
       messageFlashing: messageFlashing,
+      alarmSilenced: alarmSilenced,
       updatedAt: Date.now()
     };
     // "advanced" (Firebase) mode uses PATCH so this per-second write only merges
@@ -3348,6 +3389,14 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     return (neg?'-':'') + pad(h)+':'+pad(m)+':'+pad(sec);
   }
   function isFreeRunUp(){ return countMode === 'up'; }
+
+  // Same overrun condition the flashing alarm itself uses (tick()'s
+  // triggerAlarm() check and updatePresenter()'s two .alarm-toggle branches)
+  // -- used to decide when the Stop Flash button should even be shown.
+  function isAlarmingNow(){
+    if(isFreeRunUp()) return upAlertAt > 0 && Math.abs(remaining) >= upAlertAt;
+    return timerArmed() && remaining <= 0;
+  }
   function displaySeconds(){ return isFreeRunUp() ? Math.abs(remaining) : remaining; }
   function uid(){ return 'c'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
   function nowClockStr(){
@@ -4025,6 +4074,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     }
 
     updateEndClock();
+    updateScrubSlider();
+    updateStopFlashUI();
   }
 
   function updateEndClock(){
@@ -4081,6 +4132,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     }
     running = true;
     alarmActive = false;
+    alarmSilenced = false;
     el.startBtn.disabled = true;
     el.pauseBtn.disabled = false;
     tickHandle = setInterval(tick, 1000);
@@ -4104,7 +4156,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     clearInterval(tickHandle);
     el.startBtn.disabled = false;
     el.pauseBtn.disabled = true;
-    if(clearAlarm !== false) alarmActive = false;
+    if(clearAlarm !== false){ alarmActive = false; alarmSilenced = false; }
     saveRunningState();
   }
 
@@ -4154,6 +4206,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       lastLoadedDuration = remaining;
     }
     alarmActive = false;
+    alarmSilenced = false;
     stopTimerInternal(true);
     updateTimeDisplay();
     renderCueList();
@@ -4174,6 +4227,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     upAlertAt = hrs*3600+mins*60+secs;
     saveJSON('sm_up_alert_at', upAlertAt);
     alarmActive = false; // re-arm: a newly set/changed target should be able to flash again
+    alarmSilenced = false;
     updateTimeDisplay();
     updatePresenter();
   }
@@ -4183,6 +4237,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     el.upAlertH.value = 0; el.upAlertM.value = 0; el.upAlertS.value = 0;
     saveJSON('sm_up_alert_at', 0);
     alarmActive = false;
+    alarmSilenced = false;
     updateTimeDisplay();
     updatePresenter();
   }
@@ -4213,6 +4268,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     remaining = Math.round(diffMs / 1000);
     lastLoadedDuration = remaining;
     alarmActive = false;
+    alarmSilenced = false;
     stopTimerInternal(true);
     updateTimeDisplay();
     renderCueList();
@@ -4226,8 +4282,61 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     if(!isFreeRunUp() && lastLoadedDuration > 0 && remaining > lastLoadedDuration){
       lastLoadedDuration = remaining;
     }
+    syncCueDurationBy(deltaSeconds);
     updateTimeDisplay();
     updatePresenter();
+  }
+
+  // Keeps the Running Order in sync with a manual nudge to the live clock:
+  // whatever's loaded as the current cue has its own planned duration grown
+  // or shrunk by the same amount, so the cumulative "Running" clock time
+  // shown for every cue after it in the schedule shifts too (Erik, 2026-09-26
+  // -- "if you add a minute at the timer it needs to add at the Running at
+  // the duration of the current set"). No-op for a manual/unloaded timer,
+  // since there's no Running Order row to update.
+  function syncCueDurationBy(deltaSeconds){
+    if(!currentCueId || !deltaSeconds) return;
+    var idx = findCueIndex(currentCueId);
+    if(idx < 0) return;
+    cueList[idx].duration = Math.max(0, cueList[idx].duration + deltaSeconds);
+    persist();
+    renderCueList();
+  }
+
+  // Absolute-set counterpart to adjustTime(), used by the mouse-drag time
+  // scrub slider -- the slider represents the on-screen remaining value
+  // directly, so no free-run-up sign flip is needed the way adjustTime()
+  // needs one for its "add N seconds" button semantics.
+  function setRemainingTime(newRemaining){
+    newRemaining = Math.round(newRemaining);
+    var delta = newRemaining - remaining;
+    if(!delta) return;
+    remaining = newRemaining;
+    if(countdownTargetAt !== null) countdownTargetAt += delta*1000;
+    if(!isFreeRunUp() && lastLoadedDuration > 0 && remaining > lastLoadedDuration){
+      lastLoadedDuration = remaining;
+    }
+    syncCueDurationBy(delta);
+    updateTimeDisplay();
+    updatePresenter();
+  }
+
+  function updateScrubSlider(){
+    if(!el.timeScrub || sliderDragging) return;
+    var total = currentTotalForProgress();
+    var maxV = Math.max(total, remaining, 60);
+    maxV = Math.ceil(maxV * 1.1 / 5) * 5; // a little headroom past the loaded duration
+    var minV = Math.min(0, remaining) - Math.ceil(maxV * 0.15 / 5) * 5; // headroom to scrub into overtime
+    el.timeScrub.min = minV;
+    el.timeScrub.max = maxV;
+    el.timeScrub.step = maxV - minV > 1800 ? 5 : 1;
+    var v = Math.max(minV, Math.min(maxV, remaining));
+    if(parseInt(el.timeScrub.value, 10) !== v) el.timeScrub.value = v;
+  }
+
+  function updateStopFlashUI(){
+    if(!el.stopFlashRow) return;
+    el.stopFlashRow.hidden = !(isAlarmingNow() && !alarmSilenced);
   }
 
   function tick(){
@@ -4518,7 +4627,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         overrunEl.classList.add('show');
         var overBy = elapsedUp - upAlertAt;
         overrunEl.textContent = overBy > 0 ? 'OVER BY ' + fmt(overBy) : "TIME'S UP";
-        stageEl.classList.toggle('alarm', alarmBurstOn(true));
+        stageEl.classList.toggle('alarm', alarmBurstOn(true) && !alarmSilenced);
       } else if(upAlertAt > 0 && elapsedUp >= upAlertAt - getWarnThreshold()){
         cdEl.classList.add('warn');
         stageEl.classList.remove('alarm');
@@ -4538,7 +4647,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         overrunEl.classList.add('show');
         overrunEl.textContent = "TIME'S UP";
       }
-      stageEl.classList.toggle('alarm', alarmBurstOn(true));
+      stageEl.classList.toggle('alarm', alarmBurstOn(true) && !alarmSilenced);
     } else if(remaining <= getWarnThreshold()){
       cdEl.classList.add('warn');
       stageEl.classList.remove('alarm');
@@ -4679,6 +4788,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     lastLoadedDuration = 0;
     upRunStarted = false;
     alarmActive = false;
+    alarmSilenced = false;
 
     cueList = [];
     el.showName.value = 'Untitled Show';
@@ -4975,6 +5085,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     lastLoadedDuration = 0;
     upRunStarted = false;
     alarmActive = false;
+    alarmSilenced = false;
 
     // Bring in any custom cue-type tabs the file references, so a show built on
     // another computer keeps its custom colors/labels here too. Existing local
@@ -5332,6 +5443,27 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   document.querySelectorAll('[data-adj]').forEach(function(btn){
     btn.addEventListener('click', function(){ adjustTime(parseInt(btn.getAttribute('data-adj'),10)); });
   });
+
+  if(el.timeScrub){
+    el.timeScrub.addEventListener('pointerdown', function(){ sliderDragging = true; });
+    el.timeScrub.addEventListener('input', function(){
+      setRemainingTime(parseInt(el.timeScrub.value, 10) || 0);
+    });
+    ['pointerup','pointercancel','mouseup','touchend','change'].forEach(function(evt){
+      el.timeScrub.addEventListener(evt, function(){
+        sliderDragging = false;
+        updateScrubSlider();
+      });
+    });
+  }
+
+  if(el.stopFlashBtn){
+    el.stopFlashBtn.addEventListener('click', function(){
+      alarmSilenced = true;
+      updateTimeDisplay();
+      updatePresenter();
+    });
+  }
 
   document.addEventListener('keydown', function(e){
     var tag = (e.target && e.target.tagName) || '';
