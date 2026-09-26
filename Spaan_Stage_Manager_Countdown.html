@@ -267,19 +267,16 @@
   }
   .set-time-row span{color:var(--text-dim);font-size:18px;}
 
-  .adjust-row{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:14px;}
-
-  .scrub-row{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
-  .scrub-row .scrub-label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);font-weight:700;white-space:nowrap;}
-  .scrub-row input[type=range]{
-    flex:1;-webkit-appearance:none;appearance:none;height:5px;border-radius:0;
-    background:var(--track-bg);outline:none;
+  .adjust-row{display:flex;gap:6px;justify-content:center;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
+  .adjust-row input[type=range].inline-scrub{
+    flex:1 1 110px;min-width:90px;-webkit-appearance:none;appearance:none;height:5px;border-radius:0;
+    background:var(--track-bg);outline:none;margin:0 2px;
   }
-  .scrub-row input[type=range]::-webkit-slider-thumb{
+  .adjust-row input[type=range].inline-scrub::-webkit-slider-thumb{
     -webkit-appearance:none;appearance:none;width:17px;height:17px;border-radius:50%;
     background:var(--gold-2);border:2px solid var(--panel-bg);box-shadow:0 0 0 1px var(--gold);cursor:pointer;
   }
-  .scrub-row input[type=range]::-moz-range-thumb{
+  .adjust-row input[type=range].inline-scrub::-moz-range-thumb{
     width:17px;height:17px;border-radius:50%;background:var(--gold-2);border:2px solid var(--panel-bg);
     box-shadow:0 0 0 1px var(--gold);cursor:pointer;
   }
@@ -763,14 +760,10 @@
       <div class="adjust-row">
         <button class="btn small" data-adj="-60">&minus;1m</button>
         <button class="btn small" data-adj="-10">&minus;10s</button>
+        <input type="range" id="timeScrub" class="inline-scrub" min="0" max="300" step="1" value="0" aria-label="Scrub through the countdown time" title="Drag to scrub through the current time">
         <button class="btn small" data-adj="10">+10s</button>
         <button class="btn small" data-adj="30">+30s</button>
         <button class="btn small" data-adj="60">+1m</button>
-      </div>
-
-      <div class="scrub-row" id="scrubRow" title="Drag to scrub through the current time">
-        <span class="scrub-label">Scrub</span>
-        <input type="range" id="timeScrub" min="0" max="300" step="1" value="0" aria-label="Scrub through the countdown time">
       </div>
 
       <div class="stop-flash-row" id="stopFlashRow" hidden>
@@ -4023,6 +4016,34 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     return 60;
   }
 
+  // Extended Display countdown color: a continuous green -> red gradient as
+  // the clock gets closer to its end time (Erik, 2026-09-26), instead of the
+  // old flat "normal, then orange in the last minute" look. frac is 1 at the
+  // very start of the loaded time and 0 right at zero (and clamps there for
+  // any overrun -- overrun's own look is the flashing red alarm, handled
+  // separately). Same green/red pair used elsewhere in this theme
+  // (performance-green / danger-red), with a slightly deeper pair for the
+  // light display so it still reads clearly on a white background.
+  var PRESENTER_GRADIENT_DARK = { green: [63,208,127], red: [255,26,26] };
+  var PRESENTER_GRADIENT_LIGHT = { green: [31,138,72], red: [196,55,43] };
+  function presenterCountdownColor(frac){
+    frac = Math.max(0, Math.min(1, frac));
+    var pair = presenterTheme === 'light' ? PRESENTER_GRADIENT_LIGHT : PRESENTER_GRADIENT_DARK;
+    var rgb = [0,1,2].map(function(i){ return Math.round(pair.red[i] + (pair.green[i]-pair.red[i])*frac); });
+    return 'rgb(' + rgb.join(',') + ')';
+  }
+  // The same 0..1 "how much of the loaded time is left" fraction the
+  // progress bar uses, just also valid for Count Up mode (against its
+  // optional allocated-time target) so the gradient applies there too.
+  function presenterCountdownFrac(){
+    if(isFreeRunUp()){
+      if(upAlertAt <= 0) return null; // no target set -- nothing to gauge against
+      return 1 - (Math.abs(remaining) / upAlertAt);
+    }
+    var total = currentTotalForProgress();
+    return total > 0 ? (remaining / total) : 0;
+  }
+
   // Validates/normalizes a per-cue linked timecode ("HH:MM:SS:FF") typed into
   // the running order — pads each field to 2 digits, clamps to sane ranges.
   // Returns null for anything that doesn't parse (the field is cleared then).
@@ -4441,9 +4462,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     '.b-changeover{background:var(--p-chg-bg);color:var(--p-chg-text);}'+
     '.b-manual{background:var(--p-man-bg);color:var(--p-man-text);}'+
     '#actName{font-size:56px;font-weight:700;color:var(--p-text);margin-bottom:28px;text-align:center;padding:0 60px;max-width:90vw;font-family:"Big Shoulders Display","Archivo",sans-serif;text-transform:uppercase;letter-spacing:.5px;}'+
-    '#countdown{font-family:"JetBrains Mono","SF Mono","Consolas",monospace;font-size:calc(min(26vw,300px) * var(--cd-scale, 1));font-weight:700;letter-spacing:6px;color:var(--p-text);line-height:.88;font-variant-numeric:tabular-nums;transition:font-size .15s ease;}'+
-    '#countdown.warn{color:var(--p-warn);}'+
-    '#countdown.danger{color:#fff;}'+
+    '#countdown{font-family:"JetBrains Mono","SF Mono","Consolas",monospace;font-size:calc(min(26vw,300px) * var(--cd-scale, 1));font-weight:700;letter-spacing:6px;color:var(--p-text);line-height:.88;font-variant-numeric:tabular-nums;transition:font-size .15s ease,color .4s linear;}'+
     '#nextLine{margin-top:26px;font-size:24px;color:var(--p-dim);letter-spacing:.5px;}'+
     '#nextLine b{color:var(--p-gold);font-weight:700;}'+
     '#nextLine .next-type{font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-right:4px;}'+
@@ -4620,15 +4639,44 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       stageEl.classList.remove('alarm');
       overrunEl.classList.remove('show');
       alarmBurstOn(false);
-    } else if(isFreeRunUp()){
-      var elapsedUp = Math.abs(remaining);
-      if(upAlertAt > 0 && elapsedUp >= upAlertAt){
+      cdEl.style.color = '';
+    } else {
+      // Continuous green -> red as the clock gets closer to its end time,
+      // instead of a flat color that only jumps to orange in the final
+      // stretch. null (Count Up with no allocated-time target set) leaves
+      // the countdown its normal default color -- there's no "end" to
+      // gauge against.
+      var frac = presenterCountdownFrac();
+      cdEl.style.color = (frac === null) ? '' : presenterCountdownColor(frac);
+      if(isFreeRunUp()){
+        var elapsedUp = Math.abs(remaining);
+        if(upAlertAt > 0 && elapsedUp >= upAlertAt){
+          cdEl.classList.add('danger');
+          overrunEl.classList.add('show');
+          var overBy = elapsedUp - upAlertAt;
+          overrunEl.textContent = overBy > 0 ? 'OVER BY ' + fmt(overBy) : "TIME'S UP";
+          stageEl.classList.toggle('alarm', alarmBurstOn(true) && !alarmSilenced);
+        } else if(upAlertAt > 0 && elapsedUp >= upAlertAt - getWarnThreshold()){
+          cdEl.classList.add('warn');
+          stageEl.classList.remove('alarm');
+          overrunEl.classList.remove('show');
+          alarmBurstOn(false);
+        } else {
+          stageEl.classList.remove('alarm');
+          overrunEl.classList.remove('show');
+          alarmBurstOn(false);
+        }
+      } else if(remaining <= 0){
         cdEl.classList.add('danger');
-        overrunEl.classList.add('show');
-        var overBy = elapsedUp - upAlertAt;
-        overrunEl.textContent = overBy > 0 ? 'OVER BY ' + fmt(overBy) : "TIME'S UP";
+        if(remaining < 0){
+          overrunEl.classList.add('show');
+          overrunEl.textContent = 'OVER BY ' + fmt(Math.abs(remaining));
+        } else {
+          overrunEl.classList.add('show');
+          overrunEl.textContent = "TIME'S UP";
+        }
         stageEl.classList.toggle('alarm', alarmBurstOn(true) && !alarmSilenced);
-      } else if(upAlertAt > 0 && elapsedUp >= upAlertAt - getWarnThreshold()){
+      } else if(remaining <= getWarnThreshold()){
         cdEl.classList.add('warn');
         stageEl.classList.remove('alarm');
         overrunEl.classList.remove('show');
@@ -4638,25 +4686,6 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         overrunEl.classList.remove('show');
         alarmBurstOn(false);
       }
-    } else if(remaining <= 0){
-      cdEl.classList.add('danger');
-      if(remaining < 0){
-        overrunEl.classList.add('show');
-        overrunEl.textContent = 'OVER BY ' + fmt(Math.abs(remaining));
-      } else {
-        overrunEl.classList.add('show');
-        overrunEl.textContent = "TIME'S UP";
-      }
-      stageEl.classList.toggle('alarm', alarmBurstOn(true) && !alarmSilenced);
-    } else if(remaining <= getWarnThreshold()){
-      cdEl.classList.add('warn');
-      stageEl.classList.remove('alarm');
-      overrunEl.classList.remove('show');
-      alarmBurstOn(false);
-    } else {
-      stageEl.classList.remove('alarm');
-      overrunEl.classList.remove('show');
-      alarmBurstOn(false);
     }
 
     var nextC = null;
