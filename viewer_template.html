@@ -142,15 +142,23 @@
     padding:10px 14px calc(10px + env(safe-area-inset-bottom));
     display:flex;flex-direction:column;justify-content:center;gap:8px;z-index:22;}
   html[data-theme="light"] #voiceBar{background:rgba(242,244,239,.98);}
-  #chatToggleBtn{position:fixed;bottom:calc(var(--voicebar-h) + 14px);left:26px;width:46px;height:46px;border-radius:50%;border:1px solid rgba(128,128,128,.3);
-    background:rgba(128,128,128,.12);color:var(--text);font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:20;
-    box-shadow:0 3px 0 rgba(0,0,0,.3), 0 4px 8px rgba(0,0,0,.25);
+  /* Crew Chat now docks inside the Crew Talk bar itself, stacked directly
+     above Join/PTT (Erik: "the crew chat an PTT should be under each other
+     then the auto cue section") -- so this is a normal in-flow row button
+     now, not a floating corner circle. The bar's own height still tracks
+     it automatically (see syncVoiceBarHeight()), which keeps the floating
+     chat log panel and every other --voicebar-h-anchored element correct
+     without any extra bookkeeping here. */
+  #chatToggleBtn{position:relative;display:none;align-items:center;justify-content:center;gap:8px;
+    width:100%;min-height:38px;border-radius:0;border:1px solid rgba(128,128,128,.3);
+    background:rgba(128,128,128,.12);color:var(--text);font-size:12px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.5px;cursor:pointer;z-index:1;
     transition:transform .06s ease, box-shadow .06s ease, background .15s ease;}
   #chatToggleBtn:hover{background:rgba(128,128,128,.22);}
-  #chatToggleBtn:active{transform:translateY(2px);box-shadow:inset 0 1px 4px rgba(0,0,0,.3);}
-  #chatBadge{position:absolute;top:-4px;right:-4px;background:var(--danger);color:#fff;font-size:11px;font-weight:700;
+  #chatToggleBtn:active{transform:translateY(1px);}
+  #chatBadge{position:absolute;top:-7px;right:12px;background:var(--danger);color:#fff;font-size:11px;font-weight:700;
     min-width:18px;height:18px;border-radius:0;display:none;align-items:center;justify-content:center;padding:0 4px;}
-  #chatPanel{position:fixed;bottom:calc(var(--voicebar-h) + 72px);left:26px;width:320px;max-width:calc(100vw - 40px);max-height:50vh;
+  #chatPanel{position:fixed;bottom:calc(var(--voicebar-h) + 14px);left:26px;width:320px;max-width:calc(100vw - 40px);max-height:50vh;
     background:rgba(19,31,27,.97);border:1px solid rgba(128,128,128,.3);border-radius:0;box-shadow:0 8px 30px rgba(0,0,0,.4);
     display:none;flex-direction:column;overflow:hidden;z-index:20;}
   html[data-theme="light"] #chatPanel{background:rgba(242,244,239,.98);}
@@ -250,12 +258,14 @@
   #autocuePanel .ac-body.ac-collapsed{max-height:0;}
   #autocuePanel .ac-window{padding:6px 0 2px;}
   #autocuePanel.ac-l3 .ac-col{display:flex;gap:8px;padding:2px 2px 6px;}
-  #autocuePanel.ac-l3 .ac-col-lines{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0;}
-  #autocuePanel.ac-l3 .ac-col-line{font-size:11.5px;line-height:1.3;color:var(--dim);text-align:left;transition:opacity .18s ease;}
+  #autocuePanel.ac-l3 .ac-col-viewport{flex:1;min-width:0;position:relative;overflow:hidden;height:140px;
+    -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%);
+    mask-image:linear-gradient(to bottom,transparent 0,#000 14px,#000 calc(100% - 14px),transparent 100%);}
+  #autocuePanel.ac-l3 .ac-col-lines{position:relative;display:flex;flex-direction:column;gap:6px;transition:transform .6s cubic-bezier(.16,1,.3,1);will-change:transform;}
+  #autocuePanel.ac-l3 .ac-col-line{font-size:11.5px;line-height:1.3;color:var(--dim);text-align:left;transition:opacity .3s ease,color .3s ease,font-size .3s ease;}
   #autocuePanel.ac-l3 .ac-col-line.ac-current{color:var(--text);font-weight:700;font-size:13px;}
   #autocuePanel.ac-l3 .ac-col-line.ac-current::before{content:'';display:inline-block;width:3px;height:9px;background:var(--gold);margin-right:6px;vertical-align:middle;}
   #autocuePanel.ac-l3 .ac-col-line.ac-heading{font-weight:700;letter-spacing:1.5px;text-transform:uppercase;font-size:9px;color:var(--gold-2);}
-  #autocuePanel.ac-l3 .ac-col-line.ac-empty{opacity:0;}
   #autocuePanel.ac-l3 .ac-rail{flex:none;width:5px;display:flex;flex-direction:column;align-items:center;gap:2px;padding-top:2px;max-height:120px;overflow:hidden;justify-content:center;}
   #autocuePanel.ac-l3 .ac-dot{width:3px;height:3px;border-radius:50%;background:rgba(128,128,128,.3);flex:none;}
   #autocuePanel.ac-l3 .ac-dot-active{background:var(--gold);width:4px;height:8px;border-radius:2px;}
@@ -427,6 +437,7 @@
      overlaps. Crew Chat (the text message log) stays a separate toggleable
      panel, since it's used less often live and needs more room to read. -->
 <div id="voiceBar">
+  <button id="chatToggleBtn" title="Crew chat">&#128172; Crew Chat<span id="chatBadge">0</span></button>
   <button id="voiceJoinBtn" class="voice-round-btn">&#127908; Join Voice</button>
   <div id="voiceControls" hidden>
     <div id="voiceTargetRow"></div>
@@ -443,7 +454,6 @@
   </div>
 </div>
 
-<button id="chatToggleBtn" title="Crew chat">&#128172;<span id="chatBadge">0</span></button>
 <div id="chatPanel">
   <div id="chatHeader"><span>Crew Chat</span><button id="chatCloseBtn" title="Close">&times;</button></div>
   <div id="chatNameRow"><input type="text" id="chatNameInput" placeholder="Your name/role (e.g. Lighting)" maxlength="40"></div>
@@ -1887,7 +1897,7 @@
   }
   function autocueSkeletonHTML(layoutId){
     if(layoutId === 'l3'){
-      return '<div class="ac-col"><div class="ac-col-lines"></div><div class="ac-rail"></div></div><div class="ac-counter"></div>';
+      return '<div class="ac-col"><div class="ac-col-viewport"><div class="ac-col-lines"></div></div><div class="ac-rail"></div></div><div class="ac-counter"></div>';
     }
     return '<div class="ac-line ac-prev"></div><div class="ac-line ac-cur"></div><div class="ac-line ac-next"></div>';
   }
@@ -1898,37 +1908,63 @@
     lineEl.classList.toggle('ac-heading', !!line.h);
     lineEl.textContent = line.t;
   }
+  // A cheap content fingerprint for a parsed lyrics array -- used to tell
+  // "the song changed" (or was edited) apart from "just the current line
+  // moved", so the Scroll Column track below only gets torn down and
+  // rebuilt on the former, never on every line change.
+  function autocueLinesSignature(lines){
+    return lines.map(function(l){ return (l.h ? 'H:' : '') + l.t; }).join('\n');
+  }
   function autocueRenderInto(root, layoutId, lines, idx){
     if(!root) return;
     idx = autocueClampIdx(lines, idx);
     if(layoutId === 'l3'){
+      // Karaoke/Apple-Music-style: the FULL song lives in the track
+      // (.ac-col-lines) all the time, and the current line glides to the
+      // center of the viewport via a CSS transform transition -- so moving
+      // forward a line smoothly scrolls the next ones up into view (and the
+      // ones just sung drift up and fade out above) instead of the whole
+      // window being redrawn from scratch on every line change.
+      var viewport = root.querySelector('.ac-col-viewport');
       var wrap = root.querySelector('.ac-col-lines');
-      if(!wrap) return;
-      wrap.innerHTML = '';
-      var span = 3;
-      for(var d = -span; d <= span; d++){
-        var line = lines[idx + d];
-        var div = document.createElement('div');
-        div.className = 'ac-col-line';
-        if(!line){ div.classList.add('ac-empty'); wrap.appendChild(div); continue; }
-        div.textContent = line.t;
-        if(line.h) div.classList.add('ac-heading');
-        if(d === 0){ div.classList.add('ac-current'); div.style.opacity = 1; }
-        else { div.style.opacity = Math.max(0.16, 1 - Math.abs(d) * 0.2); }
-        wrap.appendChild(div);
+      if(!wrap || !viewport) return;
+      var sig = autocueLinesSignature(lines);
+      if(wrap.getAttribute('data-ac-sig') !== sig){
+        wrap.innerHTML = '';
+        var frag = document.createDocumentFragment();
+        lines.forEach(function(line){
+          var div = document.createElement('div');
+          div.className = 'ac-col-line';
+          if(line.h) div.classList.add('ac-heading');
+          div.textContent = line.t;
+          frag.appendChild(div);
+        });
+        wrap.appendChild(frag);
+        wrap.setAttribute('data-ac-sig', sig);
+      }
+      var children = wrap.children;
+      for(var c = 0; c < children.length; c++){
+        var dist = Math.abs(c - idx);
+        children[c].classList.toggle('ac-current', c === idx);
+        children[c].style.opacity = c === idx ? 1 : Math.max(0.12, 1 - dist * 0.16);
+      }
+      var curEl = children[idx];
+      if(curEl){
+        var target = (viewport.clientHeight / 2) - (curEl.offsetTop + curEl.offsetHeight / 2);
+        wrap.style.transform = 'translateY(' + Math.round(target) + 'px)';
       }
       var counter = root.parentElement ? root.parentElement.querySelector('.ac-counter') : null;
       if(counter) counter.textContent = lines.length ? ('Line ' + (idx + 1) + ' / ' + lines.length) : '';
       var rail = root.querySelector('.ac-rail');
       if(rail){
         rail.innerHTML = '';
-        var frag = document.createDocumentFragment();
+        var railFrag = document.createDocumentFragment();
         lines.forEach(function(_, i2){
           var dot = document.createElement('span');
           dot.className = 'ac-dot' + (i2 === idx ? ' ac-dot-active' : '');
-          frag.appendChild(dot);
+          railFrag.appendChild(dot);
         });
-        rail.appendChild(frag);
+        rail.appendChild(railFrag);
       }
       return;
     }
