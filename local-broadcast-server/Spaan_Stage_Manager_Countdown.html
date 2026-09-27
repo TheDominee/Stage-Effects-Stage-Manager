@@ -506,6 +506,23 @@
     border-radius:0;padding:9px 10px;font-size:13px;line-height:1.5;font-family:inherit;resize:vertical;}
   .lyrics-editor-hint{font-size:10.5px;color:var(--text-dim);line-height:1.4;}
 
+  .lyrics-songs-wrap{display:flex;flex-direction:column;gap:8px;margin-bottom:10px;}
+  .lyrics-songs-list{display:flex;flex-direction:column;gap:2px;max-height:190px;overflow-y:auto;border:1px solid var(--hairline);background:var(--input-bg);}
+  .lyrics-song-row{display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border:1px solid transparent;border-bottom:1px solid var(--hairline);position:relative;background:var(--panel-bg);}
+  .lyrics-song-row:last-child{border-bottom:none;}
+  .lyrics-song-row:hover{background:rgba(128,128,128,.08);}
+  .lyrics-song-row.active{border-color:var(--gold-accent,#FFB443);background:rgba(255,180,67,.08);}
+  .lyrics-song-row.dragging{opacity:.55;z-index:5;}
+  .lyrics-song-row.drop-before{box-shadow:inset 0 2px 0 var(--gold-accent,#FFB443);}
+  .lyrics-song-row.drop-after{box-shadow:inset 0 -2px 0 var(--gold-accent,#FFB443);}
+  .lyrics-song-drag{cursor:grab;color:var(--text-dim);touch-action:none;font-size:13px;user-select:none;flex:none;}
+  .lyrics-song-drag:active{cursor:grabbing;}
+  .lyrics-song-title{flex:1;font-size:12.5px;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .lyrics-song-remove{flex:none;}
+  .lyrics-song-add{align-self:flex-start;}
+  .lyrics-song-title-input{width:100%;box-sizing:border-box;background:var(--input-bg);color:var(--text);border:1px solid var(--hairline);border-radius:0;padding:7px 9px;font-size:12.5px;font-family:inherit;margin-bottom:6px;}
+  #cueBody tr.drop-target-cue{outline:2px solid var(--gold-accent,#FFB443);outline-offset:-2px;background:rgba(255,180,67,.1);}
+
   .autocue-op-box{margin-top:18px;padding-top:16px;border-top:1px solid var(--hairline);}
   .autocue-op-box h3{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);}
   .autocue-op-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px;}
@@ -514,12 +531,14 @@
   .autocue-op-col{background:var(--input-bg);border:1px solid var(--hairline);outline:none;cursor:default;}
   .autocue-op-col:focus{border-color:var(--gold-accent,#FFB443);}
   .ac-col{display:flex;gap:10px;padding:10px 10px 12px 14px;}
-  .ac-col-lines{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0;}
-  .ac-col-line{font-size:13px;line-height:1.35;color:var(--text-dim);text-align:left;cursor:pointer;}
+  .ac-col-viewport{flex:1;min-width:0;position:relative;overflow:hidden;height:168px;
+    -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%);
+    mask-image:linear-gradient(to bottom,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%);}
+  .ac-col-lines{position:relative;display:flex;flex-direction:column;gap:8px;transition:transform .65s cubic-bezier(.16,1,.3,1);will-change:transform;}
+  .ac-col-line{font-size:13px;line-height:1.35;color:var(--text-dim);text-align:left;cursor:pointer;transition:opacity .3s ease,color .3s ease,font-size .3s ease;}
   .ac-col-line.ac-current{color:var(--text);font-weight:700;font-size:14.5px;}
   .ac-col-line.ac-current::before{content:'';display:inline-block;width:3px;height:11px;background:var(--gold-accent,#FFB443);margin-right:8px;vertical-align:middle;}
   .ac-col-line.ac-heading{font-weight:700;letter-spacing:1.5px;text-transform:uppercase;font-size:10px;color:var(--gold-accent);}
-  .ac-col-line.ac-empty{opacity:0;}
   .ac-rail{flex:none;width:6px;display:flex;flex-direction:column;align-items:center;gap:3px;padding-top:3px;max-height:150px;overflow:hidden;justify-content:center;}
   .ac-dot{width:3px;height:3px;border-radius:50%;background:var(--hairline);flex:none;}
   .ac-dot-active{background:var(--gold-accent,#FFB443);width:4px;height:9px;border-radius:2px;}
@@ -733,7 +752,7 @@
           <span class="autocue-op-counter" id="autocueOpCounter"></span>
         </div>
         <div class="autocue-op-col" id="autocueOpCol" tabindex="0">
-          <div class="ac-col"><div class="ac-col-lines" id="autocueOpLines"></div><div class="ac-rail" id="autocueOpRail"></div></div>
+          <div class="ac-col"><div class="ac-col-viewport"><div class="ac-col-lines" id="autocueOpLines"></div></div><div class="ac-rail" id="autocueOpRail"></div></div>
         </div>
         <div class="autocue-op-hint">Layout shown to the performer and crew: <b id="autocueOpLayoutName">&mdash;</b></div>
       </div>
@@ -1157,7 +1176,33 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   // pointer, not show data, so it always starts fresh at 0 whenever a cue
   // is (re)loaded, same as the countdown itself does.
   var lyricsEditorOpenId = null;
+  var lyricsEditorSongIdx = {}; // cue id -> index of the song shown in the textarea, multi-song cues only
   var currentAutocueIdx = 0;
+  // A performer's cue can either hold one running block of lyrics (c.lyrics,
+  // the original simple case) or, once split via "+ This performer has
+  // multiple songs...", an ordered c.lyricsSongs list -- each its own named
+  // song/section with its own lyrics, reorderable by drag same as the
+  // Running Order itself. Either way, everything downstream (the Autocue
+  // Operator panel, the Extended Display, the Crew/Viewer pages, and the
+  // broadcast payload) just wants ONE flat, ordered block of text, so these
+  // two helpers are the single place that stitches a multi-song cue's songs
+  // together (each becoming its own [Heading] line) before it's handed to
+  // parseLyricsLines() -- nothing further downstream needs to know or care
+  // whether a cue has one song or five.
+  function cueLyricsText(c){
+    if(c && Array.isArray(c.lyricsSongs) && c.lyricsSongs.length){
+      return c.lyricsSongs.map(function(s){
+        var title = (s && s.title || '').replace(/^\s+|\s+$/g, '');
+        var body = (s && s.lyrics || '').replace(/^\s+|\s+$/g, '');
+        if(!body) return '';
+        return (title ? ('[' + title + ']\n') : '') + body;
+      }).filter(function(block){ return block; }).join('\n\n');
+    }
+    return (c && c.lyrics) || '';
+  }
+  function cueHasLyrics(c){
+    return !!cueLyricsText(c).replace(/\s+/g, '');
+  }
   var LYRICS_LAYOUTS = [
     { id: 'l1', name: 'Dock Strip', desc: 'Collapsed by default — tap to open a 3-line window' },
     { id: 'l2', name: 'Focus Window', desc: 'Always on, 3 lines, minimal space' },
@@ -2195,9 +2240,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       // with exactly how this file's own parseLyricsLines() split it, even
       // if that parsing logic ever changes. Left out entirely when off, to
       // keep the payload small for the common case of a show with no lyrics.
-      lyricsOn: !!(bcCue && bcCue.lyricsOn && bcCue.lyrics && bcCue.lyrics.replace(/\s+/g,'')),
+      lyricsOn: !!(bcCue && bcCue.lyricsOn && cueHasLyrics(bcCue)),
       lyricsLayout: (bcCue && bcCue.lyricsLayout) || 'l2',
-      lyricsLines: (bcCue && bcCue.lyricsOn && bcCue.lyrics && bcCue.lyrics.replace(/\s+/g,'')) ? parseLyricsLines(bcCue.lyrics) : [],
+      lyricsLines: (bcCue && bcCue.lyricsOn && cueHasLyrics(bcCue)) ? parseLyricsLines(cueLyricsText(bcCue)) : [],
       lyricsIdx: currentAutocueIdx || 0,
       updatedAt: Date.now()
     };
@@ -3791,7 +3836,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
       var lyricsBtn = document.createElement('button');
       lyricsBtn.type = 'button';
-      var lyricsHasContent = !!(c.lyricsOn && c.lyrics && c.lyrics.replace(/\s+/g,''));
+      var lyricsHasContent = !!(c.lyricsOn && cueHasLyrics(c));
       lyricsBtn.className = 'icon-btn lyrics-btn' + (lyricsHasContent ? ' active' : '') + (lyricsEditorOpenId === c.id ? ' open' : '');
       lyricsBtn.title = 'Song Lyrics / Autocue for this cue';
       lyricsBtn.textContent = '♪';
@@ -3884,28 +3929,286 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     });
     box.appendChild(layoutRow);
 
-    var ta = document.createElement('textarea');
-    ta.className = 'lyrics-textarea';
-    ta.rows = 8;
-    ta.spellcheck = false;
-    ta.placeholder = 'One line per lyric.\nMark a section heading either by wrapping it in [Brackets] — e.g. [Chorus] — or writing it in ALL CAPS on its own short line.';
-    ta.value = c.lyrics || '';
-    ta.addEventListener('change', function(){
-      c.lyrics = ta.value;
-      persist();
-      renderCueList();
-      if(c.id === currentCueId){ currentAutocueIdx = 0; updatePresenter(); renderAutocueOperator(); broadcastState(); }
-    });
-    box.appendChild(ta);
+    var songsWrap = document.createElement('div');
+    songsWrap.className = 'lyrics-songs-wrap';
+
+    if(Array.isArray(c.lyricsSongs)){
+      // Multi-song mode: this performer's slot has more than one song/speech
+      // in it. Each has its own name + lyrics; drag the handle to reorder
+      // them within this set (same drag pattern as the Running Order itself,
+      // so it can be reshuffled right up until -- or during -- the show), or
+      // drag a song onto a DIFFERENT performer's row in the Running Order to
+      // move it into that performer's set instead. Click a row to edit it
+      // below. Songs are stitched together in order into one continuous
+      // scroll for the Autocue Operator and the audience screens, each
+      // song's name becoming its own heading in that list.
+      var selIdx = Math.min(lyricsEditorSongIdx[c.id] || 0, Math.max(0, c.lyricsSongs.length - 1));
+      var list = document.createElement('div');
+      list.className = 'lyrics-songs-list';
+      c.lyricsSongs.forEach(function(s, i){
+        var row = document.createElement('div');
+        row.className = 'lyrics-song-row' + (i === selIdx ? ' active' : '');
+        row.dataset.songId = s.id;
+
+        var handle = document.createElement('span');
+        handle.className = 'lyrics-song-drag';
+        handle.title = 'Drag to reorder';
+        handle.textContent = '⡗';
+        row.appendChild(handle);
+
+        var label = document.createElement('span');
+        label.className = 'lyrics-song-title';
+        label.textContent = (i + 1) + '. ' + (s.title || 'Untitled');
+        row.appendChild(label);
+
+        row.addEventListener('click', function(e){
+          if(e.target === handle) return;
+          lyricsEditorSongIdx[c.id] = i;
+          renderCueList();
+        });
+
+        if(c.lyricsSongs.length > 1){
+          var rm = document.createElement('button');
+          rm.type = 'button';
+          rm.className = 'icon-btn lyrics-song-remove';
+          rm.title = 'Remove this song';
+          rm.textContent = '✕';
+          rm.addEventListener('click', function(e){
+            e.stopPropagation();
+            if(!confirm('Remove "' + (s.title || 'this song') + '" from ' + (c.name || 'this cue') + '’s set?')) return;
+            c.lyricsSongs = c.lyricsSongs.filter(function(x){ return x.id !== s.id; });
+            lyricsEditorSongIdx[c.id] = Math.max(0, i - 1);
+            persist();
+            renderCueList();
+            if(c.id === currentCueId){ currentAutocueIdx = 0; updatePresenter(); renderAutocueOperator(); broadcastState(); }
+          });
+          row.appendChild(rm);
+        }
+
+        attachSongDragHandle(handle, row, c);
+        list.appendChild(row);
+      });
+      songsWrap.appendChild(list);
+
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'btn small ghost lyrics-song-add';
+      addBtn.textContent = '+ Add Song';
+      addBtn.addEventListener('click', function(){
+        c.lyricsSongs.push({ id: uid(), title: 'Song ' + (c.lyricsSongs.length + 1), lyrics: '' });
+        lyricsEditorSongIdx[c.id] = c.lyricsSongs.length - 1;
+        persist();
+        renderCueList();
+      });
+      songsWrap.appendChild(addBtn);
+      box.appendChild(songsWrap);
+
+      if(c.lyricsSongs.length){
+        var titleInput = document.createElement('input');
+        titleInput.type = 'text';
+        titleInput.className = 'lyrics-song-title-input';
+        titleInput.placeholder = 'Song / section name';
+        titleInput.maxLength = 60;
+        titleInput.value = c.lyricsSongs[selIdx].title || '';
+        titleInput.addEventListener('change', function(){
+          c.lyricsSongs[selIdx].title = titleInput.value.slice(0, 60);
+          persist();
+          renderCueList();
+          if(c.id === currentCueId){ updatePresenter(); renderAutocueOperator(); broadcastState(); }
+        });
+        box.appendChild(titleInput);
+
+        var ta = document.createElement('textarea');
+        ta.className = 'lyrics-textarea';
+        ta.rows = 7;
+        ta.spellcheck = false;
+        ta.placeholder = 'One line per lyric.\nMark a section heading either by wrapping it in [Brackets] — e.g. [Chorus] — or writing it in ALL CAPS on its own short line.';
+        ta.value = c.lyricsSongs[selIdx].lyrics || '';
+        ta.addEventListener('change', function(){
+          c.lyricsSongs[selIdx].lyrics = ta.value;
+          persist();
+          renderCueList();
+          if(c.id === currentCueId){ currentAutocueIdx = 0; updatePresenter(); renderAutocueOperator(); broadcastState(); }
+        });
+        box.appendChild(ta);
+      } else {
+        var noSongs = document.createElement('div');
+        noSongs.className = 'lyrics-editor-hint';
+        noSongs.textContent = 'No songs in this set yet — add one above, or drag one in from another performer.';
+        box.appendChild(noSongs);
+      }
+    } else {
+      var splitBtn = document.createElement('button');
+      splitBtn.type = 'button';
+      splitBtn.className = 'btn small ghost lyrics-song-add';
+      splitBtn.textContent = '+ This performer has multiple songs…';
+      splitBtn.title = 'Split this cue into separate named songs/sections instead of one running block of text';
+      splitBtn.addEventListener('click', function(){
+        c.lyricsSongs = [
+          { id: uid(), title: c.name || 'Song 1', lyrics: c.lyrics || '' },
+          { id: uid(), title: 'Song 2', lyrics: '' }
+        ];
+        lyricsEditorSongIdx[c.id] = 0;
+        persist();
+        renderCueList();
+        if(c.id === currentCueId){ currentAutocueIdx = 0; updatePresenter(); renderAutocueOperator(); broadcastState(); }
+      });
+      songsWrap.appendChild(splitBtn);
+      box.appendChild(songsWrap);
+
+      var ta2 = document.createElement('textarea');
+      ta2.className = 'lyrics-textarea';
+      ta2.rows = 8;
+      ta2.spellcheck = false;
+      ta2.placeholder = 'One line per lyric.\nMark a section heading either by wrapping it in [Brackets] — e.g. [Chorus] — or writing it in ALL CAPS on its own short line.';
+      ta2.value = c.lyrics || '';
+      ta2.addEventListener('change', function(){
+        c.lyrics = ta2.value;
+        persist();
+        renderCueList();
+        if(c.id === currentCueId){ currentAutocueIdx = 0; updatePresenter(); renderAutocueOperator(); broadcastState(); }
+      });
+      box.appendChild(ta2);
+    }
 
     var hint = document.createElement('div');
     hint.className = 'lyrics-editor-hint';
-    hint.textContent = 'Shown to the performer on the Extended Display and to crew on their broadcast page, in the layout chosen above. Once this cue is loaded, drive which line is highlighted from the Autocue Operator panel below Crew Talk.';
+    hint.textContent = 'Shown to the performer on the Extended Display and to crew on their broadcast page, in the layout chosen above. Multiple songs in one performer’s set scroll together as one continuous list, each song’s name as a heading — drag to reshuffle their order any time, including mid-show. Once this cue is loaded, drive which line is highlighted from the Autocue Operator panel below Crew Talk.';
     box.appendChild(hint);
 
     td.appendChild(box);
     tr.appendChild(td);
     return tr;
+  }
+  // Drag-to-reorder for the songs/sections within ONE performer's cue --
+  // same Pointer Events pattern as attachDragHandle() below (grab, slide via
+  // transform, gold before/after indicator, drop to splice into place) but
+  // scoped to that cue's own lyricsSongs list instead of the whole
+  // cueList, since a performer's set can be reshuffled independently of
+  // the Running Order itself.
+  // Walks up from the element under (x, y) to find a Running Order <tr> for
+  // a DIFFERENT cue -- used while dragging a song, so it can be dropped
+  // straight onto another performer's row to move it into that performer's
+  // set (not just reordered within its own).
+  function cueRowAtPoint(x, y){
+    var node = document.elementFromPoint(x, y);
+    while(node && node !== document.body){
+      if(node.tagName === 'TR' && node.dataset && node.dataset.cueId && !node.classList.contains('lyrics-editor-row')) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+  function attachSongDragHandle(handle, row, cue){
+    var pointerId = null;
+    var startY = 0;
+    var dropBeforeId = null;
+    var crossTargetCueId = null;
+    var crossTargetPos = null; // 'start' | 'end' -- where in the target performer's set it'll land
+    function listRows(){
+      return row.parentElement ? Array.prototype.slice.call(row.parentElement.querySelectorAll('.lyrics-song-row')) : [];
+    }
+    function clearIndicators(){
+      listRows().forEach(function(r){ r.classList.remove('drop-before', 'drop-after'); });
+      Array.prototype.forEach.call(document.querySelectorAll('tr.drop-target-cue'), function(r){ r.classList.remove('drop-target-cue'); });
+    }
+    function onMove(e){
+      if(pointerId === null || e.pointerId !== pointerId) return;
+      autoScrollCueListForDrag(e.clientY);
+      row.style.transform = 'translateY(' + (e.clientY - startY) + 'px)';
+      clearIndicators();
+      dropBeforeId = null;
+      crossTargetCueId = null;
+      crossTargetPos = null;
+
+      // Dropping onto a DIFFERENT performer's row wins over reordering
+      // within this cue's own list -- check that first.
+      var targetRow = cueRowAtPoint(e.clientX, e.clientY);
+      if(targetRow && targetRow.dataset.cueId !== cue.id){
+        crossTargetCueId = targetRow.dataset.cueId;
+        var trect = targetRow.getBoundingClientRect();
+        crossTargetPos = (e.clientY < trect.top + trect.height / 2) ? 'start' : 'end';
+        targetRow.classList.add('drop-target-cue');
+        return;
+      }
+
+      var rows = listRows().filter(function(r){ return r !== row; });
+      for(var i=0;i<rows.length;i++){
+        var rect = rows[i].getBoundingClientRect();
+        if(e.clientY < rect.top + rect.height/2){
+          rows[i].classList.add('drop-before');
+          dropBeforeId = rows[i].dataset.songId;
+          break;
+        }
+      }
+      if(dropBeforeId === null && rows.length){
+        rows[rows.length-1].classList.add('drop-after');
+      }
+    }
+    function onUp(e){
+      if(pointerId === null || e.pointerId !== pointerId) return;
+      try{ handle.releasePointerCapture(pointerId); }catch(err){}
+      pointerId = null;
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onUp);
+      row.style.transform = '';
+      row.classList.remove('dragging');
+      clearIndicators();
+
+      var myId = row.dataset.songId;
+      var dragged = cue.lyricsSongs.filter(function(s){ return s.id === myId; })[0];
+      if(!dragged) return;
+
+      if(crossTargetCueId){
+        var targetCue = cueList.filter(function(c2){ return c2.id === crossTargetCueId; })[0];
+        var pos = crossTargetPos;
+        crossTargetCueId = null;
+        crossTargetPos = null;
+        if(!targetCue) return;
+        cue.lyricsSongs = cue.lyricsSongs.filter(function(s){ return s.id !== myId; });
+        // Bring the target performer into multi-song mode too if it wasn't
+        // already, carrying over any single lyrics block it already had as
+        // its own first song -- dropping a song onto it never discards
+        // lyrics that were already there.
+        if(!Array.isArray(targetCue.lyricsSongs)){
+          targetCue.lyricsSongs = cueHasLyrics(targetCue)
+            ? [{ id: uid(), title: targetCue.name || 'Song 1', lyrics: targetCue.lyrics || '' }]
+            : [];
+        }
+        var insertPos = (pos === 'start') ? 0 : targetCue.lyricsSongs.length;
+        targetCue.lyricsSongs.splice(insertPos, 0, dragged);
+        targetCue.lyricsOn = true;
+        lyricsEditorSongIdx[targetCue.id] = insertPos;
+        lyricsEditorSongIdx[cue.id] = 0;
+        lyricsEditorOpenId = targetCue.id; // jump the open editor to where the song landed
+        persist();
+        renderCueList();
+        if(cue.id === currentCueId || targetCue.id === currentCueId){ currentAutocueIdx = 0; updatePresenter(); renderAutocueOperator(); broadcastState(); }
+        return;
+      }
+
+      var without = cue.lyricsSongs.filter(function(s){ return s.id !== myId; });
+      var insertAt = dropBeforeId ? without.findIndex(function(s){ return s.id === dropBeforeId; }) : -1;
+      if(insertAt < 0) insertAt = without.length;
+      without.splice(insertAt, 0, dragged);
+      cue.lyricsSongs = without;
+      lyricsEditorSongIdx[cue.id] = insertAt;
+      persist();
+      renderCueList();
+      if(cue.id === currentCueId){ currentAutocueIdx = 0; updatePresenter(); renderAutocueOperator(); broadcastState(); }
+    }
+    handle.addEventListener('pointerdown', function(e){
+      if(e.button !== undefined && e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      pointerId = e.pointerId;
+      startY = e.clientY;
+      try{ handle.setPointerCapture(pointerId); }catch(err){}
+      row.classList.add('dragging');
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp);
+      handle.addEventListener('pointercancel', onUp);
+    });
   }
 
   // Drag-to-reorder: grabbing the handle slides the row along with the pointer
@@ -3915,6 +4218,25 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   // where it will land. On release the cueList array is reordered to match
   // and the list is re-rendered. Works with mouse, pen and touch via Pointer
   // Events, so it also drags on a tablet.
+  // The Running Order list scrolls internally once it's taller than the box
+  // (see .cue-scroll's max-height) -- so a drag that needs to reach a row
+  // currently off the top/bottom edge of that box (reordering performers a
+  // long way apart, or dropping a song onto a performer further down a long
+  // show) needs the list to scroll itself while the pointer hovers near an
+  // edge, same as any drag-and-drop list. Shared by both drag handlers below.
+  function autoScrollCueListForDrag(clientY){
+    var scroller = document.querySelector('.cue-scroll');
+    if(!scroller) return;
+    var rect = scroller.getBoundingClientRect();
+    var EDGE = 48, MAX_STEP = 20;
+    if(clientY < rect.top + EDGE && scroller.scrollTop > 0){
+      var up = Math.ceil((EDGE - (clientY - rect.top)) / EDGE * MAX_STEP);
+      scroller.scrollTop = Math.max(0, scroller.scrollTop - up);
+    } else if(clientY > rect.bottom - EDGE && scroller.scrollTop < scroller.scrollHeight - scroller.clientHeight){
+      var down = Math.ceil((EDGE - (rect.bottom - clientY)) / EDGE * MAX_STEP);
+      scroller.scrollTop = Math.min(scroller.scrollHeight - scroller.clientHeight, scroller.scrollTop + down);
+    }
+  }
   function attachDragHandle(handle, tr){
     var pointerId = null;
     var startY = 0;
@@ -3926,6 +4248,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     }
     function onMove(e){
       if(pointerId === null || e.pointerId !== pointerId) return;
+      autoScrollCueListForDrag(e.clientY);
       tr.style.transform = 'translateY(' + (e.clientY - startY) + 'px)';
       clearIndicators();
       dropBeforeId = null;
@@ -3996,6 +4319,14 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   }
 
   function findCueIndex(id){ for(var i=0;i<cueList.length;i++){ if(cueList[i].id===id) return i; } return -1; }
+  // Shared by the Right/Left and N/P keyboard shortcuts -- moves the loaded
+  // cue forward (dir=1) or back (dir=-1) one row in the running order.
+  function goToAdjacentCue(dir){
+    if(!cueList.length) return;
+    var idx = currentCueId ? findCueIndex(currentCueId) : -1;
+    var next = idx >= 0 ? idx + dir : 0;
+    if(next >= 0 && next < cueList.length) loadCue(cueList[next].id);
+  }
 
   /* ---------------- custom cue types (tabs) ---------------- */
   var KIND_PALETTE = ['#4f86e0','#c65fd6','#e0a23f','#e0556f','#2ec4c4','#8a9a5b','#dd8a3f','#6f7fe0'];
@@ -4123,14 +4454,14 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     if(!currentCueId) return null;
     var idx = findCueIndex(currentCueId);
     var c = idx >= 0 ? cueList[idx] : null;
-    if(!c || !c.lyricsOn || !c.lyrics || !c.lyrics.replace(/\s+/g,'')) return null;
+    if(!c || !c.lyricsOn || !cueHasLyrics(c)) return null;
     return c;
   }
   function renderAutocueOperator(){
     var c = currentAutocueCue();
     if(!c){ el.autocueOpBox.hidden = true; return; }
     el.autocueOpBox.hidden = false;
-    var lines = parseLyricsLines(c.lyrics);
+    var lines = parseLyricsLines(cueLyricsText(c));
     currentAutocueIdx = autocueClampIdx(lines, currentAutocueIdx);
     el.autocueOpName.textContent = c.name || '';
     el.autocueOpCounter.textContent = lines.length ? ('Line ' + (currentAutocueIdx + 1) + ' / ' + lines.length) : '';
@@ -4138,16 +4469,17 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     el.autocueOpLayoutName.textContent = layoutMeta ? layoutMeta.name : 'Focus Window';
     autocueRenderInto(el.autocueOpCol.firstElementChild, 'l3', lines, currentAutocueIdx);
     // Clicking any visible line jumps straight to it -- quicker for the
-    // operator than scrolling line-by-line to catch up after a skip.
+    // operator than scrolling line-by-line to catch up after a skip. The
+    // whole song now lives in the DOM (see autocueRenderInto's Scroll
+    // Column track), so each child maps 1:1 to its own absolute line index.
     Array.prototype.forEach.call(el.autocueOpLines.children, function(lineEl, i){
-      var targetIdx = currentAutocueIdx - 3 + i;
-      lineEl.onclick = function(){ setAutocueIdx(targetIdx); };
+      lineEl.onclick = function(){ setAutocueIdx(i); };
     });
   }
   function setAutocueIdx(i){
     var c = currentAutocueCue();
     if(!c) return;
-    var lines = parseLyricsLines(c.lyrics);
+    var lines = parseLyricsLines(cueLyricsText(c));
     var next = autocueClampIdx(lines, i);
     if(next === currentAutocueIdx) return;
     currentAutocueIdx = next;
@@ -4168,11 +4500,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         guard++;
       }
     }, { passive: false });
-    el.autocueOpCol.addEventListener('keydown', function(e){
-      if(!currentAutocueCue()) return;
-      if(e.key === 'ArrowDown'){ e.preventDefault(); setAutocueIdx(currentAutocueIdx + 1); }
-      if(e.key === 'ArrowUp'){ e.preventDefault(); setAutocueIdx(currentAutocueIdx - 1); }
-    });
+    // Up/Down are now handled once, globally (see the document-level keydown
+    // handler below) so they work no matter what has focus and never
+    // double-advance by firing here too on the way up.
   })();
 
   function setBadge(type){
@@ -4330,7 +4660,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   // reuses the 3-line window with larger current-line styling via CSS.
   function autocueSkeletonHTML(layoutId){
     if(layoutId === 'l3'){
-      return '<div class="ac-col"><div class="ac-col-lines"></div><div class="ac-rail"></div></div><div class="ac-counter"></div>';
+      return '<div class="ac-col"><div class="ac-col-viewport"><div class="ac-col-lines"></div></div><div class="ac-rail"></div></div><div class="ac-counter"></div>';
     }
     return '<div class="ac-line ac-prev"></div><div class="ac-line ac-cur"></div><div class="ac-line ac-next"></div>';
   }
@@ -4341,37 +4671,63 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     lineEl.classList.toggle('ac-heading', !!line.h);
     lineEl.textContent = line.t;
   }
+  // A cheap content fingerprint for a parsed lyrics array -- used to tell
+  // "the song changed" (or was edited) apart from "just the current line
+  // moved", so the Scroll Column track below only gets torn down and
+  // rebuilt on the former, never on every line change.
+  function autocueLinesSignature(lines){
+    return lines.map(function(l){ return (l.h ? 'H:' : '') + l.t; }).join('\n');
+  }
   function autocueRenderInto(root, layoutId, lines, idx){
     if(!root) return;
     idx = autocueClampIdx(lines, idx);
     if(layoutId === 'l3'){
+      // Karaoke/Apple-Music-style: the FULL song lives in the track
+      // (.ac-col-lines) all the time, and the current line glides to the
+      // center of the viewport via a CSS transform transition -- so moving
+      // forward a line smoothly scrolls the next ones up into view (and the
+      // ones just sung drift up and fade out above) instead of the whole
+      // window being redrawn from scratch on every line change.
+      var viewport = root.querySelector('.ac-col-viewport');
       var wrap = root.querySelector('.ac-col-lines');
-      if(!wrap) return;
-      wrap.innerHTML = '';
-      var span = 3;
-      for(var d = -span; d <= span; d++){
-        var line = lines[idx + d];
-        var div = document.createElement('div');
-        div.className = 'ac-col-line';
-        if(!line){ div.classList.add('ac-empty'); wrap.appendChild(div); continue; }
-        div.textContent = line.t;
-        if(line.h) div.classList.add('ac-heading');
-        if(d === 0){ div.classList.add('ac-current'); div.style.opacity = 1; }
-        else { div.style.opacity = Math.max(0.16, 1 - Math.abs(d) * 0.2); }
-        wrap.appendChild(div);
+      if(!wrap || !viewport) return;
+      var sig = autocueLinesSignature(lines);
+      if(wrap.getAttribute('data-ac-sig') !== sig){
+        wrap.innerHTML = '';
+        var frag = document.createDocumentFragment();
+        lines.forEach(function(line){
+          var div = document.createElement('div');
+          div.className = 'ac-col-line';
+          if(line.h) div.classList.add('ac-heading');
+          div.textContent = line.t;
+          frag.appendChild(div);
+        });
+        wrap.appendChild(frag);
+        wrap.setAttribute('data-ac-sig', sig);
+      }
+      var children = wrap.children;
+      for(var c = 0; c < children.length; c++){
+        var dist = Math.abs(c - idx);
+        children[c].classList.toggle('ac-current', c === idx);
+        children[c].style.opacity = c === idx ? 1 : Math.max(0.12, 1 - dist * 0.16);
+      }
+      var curEl = children[idx];
+      if(curEl){
+        var target = (viewport.clientHeight / 2) - (curEl.offsetTop + curEl.offsetHeight / 2);
+        wrap.style.transform = 'translateY(' + Math.round(target) + 'px)';
       }
       var counter = root.parentElement ? root.parentElement.querySelector('.ac-counter') : null;
       if(counter) counter.textContent = lines.length ? ('Line ' + (idx + 1) + ' / ' + lines.length) : '';
       var rail = root.querySelector('.ac-rail');
       if(rail){
         rail.innerHTML = '';
-        var frag = document.createDocumentFragment();
+        var railFrag = document.createDocumentFragment();
         lines.forEach(function(_, i2){
           var dot = document.createElement('span');
           dot.className = 'ac-dot' + (i2 === idx ? ' ac-dot-active' : '');
-          frag.appendChild(dot);
+          railFrag.appendChild(dot);
         });
-        rail.appendChild(frag);
+        rail.appendChild(railFrag);
       }
       return;
     }
@@ -4864,12 +5220,14 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     '#autocuePanel .ac-body{max-height:220px;overflow:hidden;transition:max-height .22s ease;}'+
     '#autocuePanel .ac-body.ac-collapsed{max-height:0;}'+
     '#autocuePanel.ac-l3 .ac-col{display:flex;gap:20px;padding:8px 0;max-width:900px;margin:0 auto;}'+
-    '#autocuePanel.ac-l3 .ac-col-lines{flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;}'+
-    '#autocuePanel.ac-l3 .ac-col-line{font-size:19px;line-height:1.35;color:var(--p-dim);text-align:left;transition:opacity .18s ease;}'+
+    '#autocuePanel.ac-l3 .ac-col-viewport{flex:1;min-width:0;position:relative;overflow:hidden;height:250px;'+
+      '-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 26px,#000 calc(100% - 26px),transparent 100%);'+
+      'mask-image:linear-gradient(to bottom,transparent 0,#000 26px,#000 calc(100% - 26px),transparent 100%);}'+
+    '#autocuePanel.ac-l3 .ac-col-lines{position:relative;display:flex;flex-direction:column;gap:10px;transition:transform .75s cubic-bezier(.16,1,.3,1);will-change:transform;}'+
+    '#autocuePanel.ac-l3 .ac-col-line{font-size:19px;line-height:1.35;color:var(--p-dim);text-align:left;transition:opacity .35s ease,color .35s ease,font-size .35s ease;}'+
     '#autocuePanel.ac-l3 .ac-col-line.ac-current{color:var(--p-text);font-weight:700;font-size:23px;}'+
     '#autocuePanel.ac-l3 .ac-col-line.ac-current::before{content:"";display:inline-block;width:4px;height:16px;background:var(--p-gold);margin-right:10px;vertical-align:middle;}'+
     '#autocuePanel.ac-l3 .ac-col-line.ac-heading{font-weight:700;letter-spacing:2px;text-transform:uppercase;font-size:14px;color:var(--p-gold);}'+
-    '#autocuePanel.ac-l3 .ac-col-line.ac-empty{opacity:0;}'+
     '#autocuePanel.ac-l3 .ac-rail{flex:none;width:8px;display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:4px;max-height:220px;overflow:hidden;justify-content:center;}'+
     '#autocuePanel.ac-l3 .ac-dot{width:4px;height:4px;border-radius:50%;background:rgba(128,128,128,.3);flex:none;}'+
     '#autocuePanel.ac-l3 .ac-dot-active{background:var(--p-gold);width:5px;height:12px;border-radius:2px;}'+
@@ -4937,7 +5295,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     var panel = d.getElementById('autocuePanel');
     var stageEl = d.getElementById('stage');
     if(!panel) return;
-    var on = !!(curCue && curCue.lyricsOn && curCue.lyrics && curCue.lyrics.replace(/\s+/g,''));
+    var on = !!(curCue && curCue.lyricsOn && cueHasLyrics(curCue));
     if(!on){
       panel.style.display = 'none';
       panel.removeAttribute('data-layout');
@@ -4965,7 +5323,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     panel.style.display = 'block';
     if(stageEl) stageEl.classList.toggle('ac-l4-active', layoutId === 'l4');
 
-    var lines = parseLyricsLines(curCue.lyrics);
+    var lines = parseLyricsLines(cueLyricsText(curCue));
     var idx = autocueClampIdx(lines, currentAutocueIdx);
     if(layoutId === 'l1'){
       var stripNow = d.getElementById('acStripNow');
@@ -5381,6 +5739,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         if(c.lyricsOn) out.lyricsOn = true;
         if(c.lyrics) out.lyrics = c.lyrics;
         if(c.lyricsLayout) out.lyricsLayout = c.lyricsLayout;
+        if(Array.isArray(c.lyricsSongs)) out.lyricsSongs = c.lyricsSongs.map(function(s){
+          return { id: (s && s.id) || uid(), title: (s && s.title) || '', lyrics: (s && s.lyrics) || '' };
+        });
         return out;
       })
     };
@@ -5574,10 +5935,16 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       var secs = (c.duration || 0) % 60;
       var color = isCustomType(c.type) ? (c.kindColor || '') : '';
       var warnAt = (typeof c.warnAt === 'number' && c.warnAt > 0) ? c.warnAt : '';
-      var lyricsOn = !!(c.lyricsOn && c.lyrics && c.lyrics.replace(/\s+/g, ''));
+      // Multi-song cues flatten to one combined block here (each song's name
+      // becoming its own [Heading] line) -- Excel round-trips the full
+      // content correctly either way, it just comes back as one running
+      // block rather than separately-editable songs (re-split it with
+      // "+ This performer has multiple songs..." after loading, if wanted).
+      var cueLyricsFlat = cueLyricsText(c);
+      var lyricsOn = !!(c.lyricsOn && cueLyricsFlat.replace(/\s+/g, ''));
       var lyricsLayoutInfo = lyricsOn ? LYRICS_LAYOUTS.filter(function(l){ return l.id === (c.lyricsLayout || 'l2'); })[0] : null;
       aoa.push([typeLabel, c.name || '', mins, secs, c.notes || '', c.printNote ? 'Yes' : '', color, warnAt, c.tc || '', c.countDir === 'up' ? 'Up' : 'Down',
-        lyricsOn ? 'Yes' : '', lyricsLayoutInfo ? lyricsLayoutInfo.name : '', c.lyrics || '']);
+        lyricsOn ? 'Yes' : '', lyricsLayoutInfo ? lyricsLayoutInfo.name : '', cueLyricsFlat]);
     });
     var ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [{ wch: 16 }, { wch: 34 }, { wch: 9 }, { wch: 9 }, { wch: 24 }, { wch: 11 }, { wch: 10 }, { wch: 10 }, { wch: 13 }, { wch: 11 }, { wch: 10 }, { wch: 14 }, { wch: 40 }];
@@ -5666,6 +6033,15 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       if(c && typeof c.lyrics === 'string' && c.lyrics) cue.lyrics = c.lyrics;
       if(c && c.lyricsOn) cue.lyricsOn = true;
       if(c && ['l1','l2','l3','l4'].indexOf(c.lyricsLayout) !== -1) cue.lyricsLayout = c.lyricsLayout;
+      if(c && Array.isArray(c.lyricsSongs)){
+        cue.lyricsSongs = c.lyricsSongs.map(function(s){
+          return {
+            id: (s && typeof s.id === 'string' && s.id) || uid(),
+            title: (s && typeof s.title === 'string') ? s.title.slice(0, 60) : '',
+            lyrics: (s && typeof s.lyrics === 'string') ? s.lyrics.slice(0, 20000) : ''
+          };
+        });
+      }
       return cue;
     });
     lyricsEditorOpenId = null;
@@ -5880,10 +6256,14 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       }
       var badgeBg = hexToRgba(badgeColor, 0.14);
       var notesCell = hasPrintNotes ? ('<td class="notes">'+(c.printNote && c.notes ? escapeHtmlBreaks(c.notes) : '')+'</td>') : '';
+      // Flag any cue that has autocue lyrics switched on, so the SM/crew can
+      // see at a glance from the printed sheet which acts need the autocue
+      // ready to go -- not just from the on-screen ♪ button.
+      var autocueBadge = (c.lyricsOn && cueHasLyrics(c)) ? ' <span class="autocue-badge">&#9835; Autocue</span>' : '';
       return '<tr>'+
         '<td class="idx">'+(idx+1)+'</td>'+
         '<td><span class="type-badge" style="background:'+badgeBg+';color:'+badgeColor+';border-color:'+badgeColor+'">'+escapeHtml(typeLabel)+'</span></td>'+
-        '<td class="name">'+escapeHtml(c.name || '')+'</td>'+
+        '<td class="name">'+escapeHtml(c.name || '')+autocueBadge+'</td>'+
         notesCell+
         '<td class="sched">'+escapeHtml(sched[idx] || '—')+'</td>'+
         '<td class="dur">'+fmt(c.duration)+'</td>'+
@@ -5940,6 +6320,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       'td.sched,td.dur{font-family:"JetBrains Mono","Courier New",monospace;white-space:nowrap;}'+
       'td.dur{text-align:right;font-weight:700;color:#182620;}'+
       '.type-badge{display:inline-block;border:1px solid;border-radius:0;padding:2px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;'+
+        '-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
+      '.autocue-badge{display:inline-block;margin-left:7px;border:1px solid #A85A00;border-radius:0;padding:1px 7px;font-size:9.5px;font-weight:700;'+
+        'text-transform:uppercase;letter-spacing:.4px;color:#A85A00;background:#fdf3e4;vertical-align:middle;'+
         '-webkit-print-color-adjust:exact;print-color-adjust:exact;}'+
       '.total-row td{border-bottom:none;border-top:2px solid #FF9500;background:#fdf3e4;font-weight:700;padding-top:11px;padding-bottom:11px;}'+
       '.total-row td.name{color:#182620;text-transform:uppercase;font-size:11.5px;letter-spacing:.4px;}'+
@@ -6041,18 +6424,32 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       if(document.fullscreenElement){ document.exitFullscreen(); }
       else { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }
     }
-    else if(e.key === 'ArrowRight' || e.key === 'ArrowDown'){
+    // "N" / "P" move to the Next / Previous performer in the running order --
+    // kept separate from Up/Down (below) so the two shortcuts never fight
+    // over the same keys: Up/Down are reserved for scrolling the autocue
+    // lyrics line-by-line instead (Erik: "up down buttons to scroll through
+    // the autocue, and N and P ... to go n Next or P Previous with the
+    // performars"). Right/Left still do the same performer-jump too, since
+    // that behavior already existed and nothing asked for it to change.
+    else if(e.key === 'ArrowRight' || e.key === 'n' || e.key === 'N'){
       e.preventDefault();
-      if(!cueList.length) return;
-      var idx = currentCueId ? findCueIndex(currentCueId) : -1;
-      var next = idx >= 0 ? idx + 1 : 0;
-      if(next < cueList.length) loadCue(cueList[next].id);
+      goToAdjacentCue(1);
     }
-    else if(e.key === 'ArrowLeft' || e.key === 'ArrowUp'){
+    else if(e.key === 'ArrowLeft' || e.key === 'p' || e.key === 'P'){
       e.preventDefault();
-      if(!cueList.length) return;
-      var pIdx = currentCueId ? findCueIndex(currentCueId) : -1;
-      if(pIdx > 0) loadCue(cueList[pIdx - 1].id);
+      goToAdjacentCue(-1);
+    }
+    // Up/Down scroll the currently-loaded cue's autocue lyrics one line at a
+    // time, wherever the page has focus (mirrors the wheel-scroll behavior
+    // of the Autocue Operator column). No-op when the loaded cue has no
+    // lyrics on, so plain Up/Down stay harmless the rest of the time.
+    else if(e.key === 'ArrowDown'){
+      e.preventDefault();
+      if(currentAutocueCue()) setAutocueIdx(currentAutocueIdx + 1);
+    }
+    else if(e.key === 'ArrowUp'){
+      e.preventDefault();
+      if(currentAutocueCue()) setAutocueIdx(currentAutocueIdx - 1);
     }
     // Number-key shortcuts (1-9, 0) - handy for a Stream Deck or other macro pad's
     // "Hotkey" action: give each button a plain key press and it drives this page,
