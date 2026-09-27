@@ -486,6 +486,46 @@
   .cue-scroll{max-height:420px;overflow-y:auto;}
   .cue-total{margin-top:10px;font-size:12px;color:var(--text-dim);text-align:right;}
 
+  /* ---- Song Lyrics / Autocue: per-cue editor row + operator panel ---- */
+  .icon-btn.lyrics-btn{color:var(--text-dim);}
+  .icon-btn.lyrics-btn.active{color:var(--gold-accent);}
+  .icon-btn.lyrics-btn.open{background:var(--overlay-hover);color:var(--text);}
+  table.cue-table tbody tr.lyrics-editor-row td{padding:12px 10px 14px;background:var(--panel-bg-2);border-bottom:1px solid var(--hairline);}
+  .lyrics-editor{display:flex;flex-direction:column;gap:10px;}
+  .lyrics-editor-head{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .lyrics-on-toggle{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text);cursor:pointer;user-select:none;}
+  .lyrics-layout-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+  @media (max-width:900px){ .lyrics-layout-row{grid-template-columns:repeat(2,1fr);} }
+  .lyrics-layout-btn{text-align:left;background:var(--input-bg);border:1px solid var(--hairline);color:var(--text);
+    border-radius:0;padding:8px 9px;cursor:pointer;font-family:inherit;}
+  .lyrics-layout-btn b{display:block;font-size:12px;margin-bottom:2px;}
+  .lyrics-layout-btn span{display:block;font-size:10.5px;color:var(--text-dim);line-height:1.3;}
+  .lyrics-layout-btn.active{border-color:var(--gold-accent,#FFB443);background:var(--warn-chip);}
+  .lyrics-layout-btn.active b{color:var(--gold-accent);}
+  .lyrics-textarea{width:100%;min-height:150px;background:var(--input-bg);border:1px solid var(--hairline);color:var(--text);
+    border-radius:0;padding:9px 10px;font-size:13px;line-height:1.5;font-family:inherit;resize:vertical;}
+  .lyrics-editor-hint{font-size:10.5px;color:var(--text-dim);line-height:1.4;}
+
+  .autocue-op-box{margin-top:18px;padding-top:16px;border-top:1px solid var(--hairline);}
+  .autocue-op-box h3{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);}
+  .autocue-op-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px;}
+  .autocue-op-name{font-size:13px;font-weight:700;color:var(--text);}
+  .autocue-op-counter{font-family:var(--mono);font-size:11px;color:var(--text-dim);}
+  .autocue-op-col{background:var(--input-bg);border:1px solid var(--hairline);outline:none;cursor:default;}
+  .autocue-op-col:focus{border-color:var(--gold-accent,#FFB443);}
+  .ac-col{display:flex;gap:10px;padding:10px 10px 12px 14px;}
+  .ac-col-lines{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0;}
+  .ac-col-line{font-size:13px;line-height:1.35;color:var(--text-dim);text-align:left;cursor:pointer;}
+  .ac-col-line.ac-current{color:var(--text);font-weight:700;font-size:14.5px;}
+  .ac-col-line.ac-current::before{content:'';display:inline-block;width:3px;height:11px;background:var(--gold-accent,#FFB443);margin-right:8px;vertical-align:middle;}
+  .ac-col-line.ac-heading{font-weight:700;letter-spacing:1.5px;text-transform:uppercase;font-size:10px;color:var(--gold-accent);}
+  .ac-col-line.ac-empty{opacity:0;}
+  .ac-rail{flex:none;width:6px;display:flex;flex-direction:column;align-items:center;gap:3px;padding-top:3px;max-height:150px;overflow:hidden;justify-content:center;}
+  .ac-dot{width:3px;height:3px;border-radius:50%;background:var(--hairline);flex:none;}
+  .ac-dot-active{background:var(--gold-accent,#FFB443);width:4px;height:9px;border-radius:2px;}
+  .ac-counter{font-family:var(--mono);font-size:10px;color:var(--text-dim);text-align:right;padding:0 14px 10px;}
+  .autocue-op-hint{font-size:10.5px;color:var(--text-dim);margin-top:6px;}
+
   .crew-talk-box{margin-top:18px;padding-top:16px;border-top:1px solid var(--hairline);}
   .crew-talk-box h3{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);}
   .crew-talk-controls{display:flex;flex-direction:column;gap:8px;margin-top:8px;}
@@ -686,6 +726,18 @@
         <div id="voiceAudioSinks" hidden></div>
       </div>
 
+      <div class="autocue-op-box" id="autocueOpBox" hidden>
+        <h3>Autocue Operator <span class="bc-hint">(drives the live lyrics line the performer's Extended Display and crew see &mdash; scroll, click a line, or use the &uarr;/&darr; keys while this panel is focused)</span></h3>
+        <div class="autocue-op-head">
+          <span class="autocue-op-name" id="autocueOpName"></span>
+          <span class="autocue-op-counter" id="autocueOpCounter"></span>
+        </div>
+        <div class="autocue-op-col" id="autocueOpCol" tabindex="0">
+          <div class="ac-col"><div class="ac-col-lines" id="autocueOpLines"></div><div class="ac-rail" id="autocueOpRail"></div></div>
+        </div>
+        <div class="autocue-op-hint">Layout shown to the performer and crew: <b id="autocueOpLayoutName">&mdash;</b></div>
+      </div>
+
       <div class="crew-chat-box">
         <h3>Crew Chat <span class="bc-hint">(two-way messages with your Crew broadcast link &mdash; needs Broadcasting + the advanced Firebase setup)</span></h3>
         <div class="crew-chat-log" id="crewChatLog"><div class="crew-chat-empty" id="crewChatEmpty">No messages yet.</div></div>
@@ -818,7 +870,7 @@
     <div class="footer-about"><kbd>1</kbd>-<kbd>5</kbd> message presets (5 MIN/PLACES/STANDBY/GO/HOLD) &nbsp; <kbd>6</kbd> clear message &nbsp; <kbd>7</kbd> flash toggle &nbsp; <kbd>8</kbd> open extended display &nbsp; <kbd>9</kbd> test alarm &nbsp; <kbd>0</kbd> save show &mdash; handy if you're driving this from a Stream Deck or other macro pad: map each button to the matching key with its plain "Hotkey" action, no plugin needed. Just make sure this browser tab is the focused window when a button is pressed.</div>
     <div class="footer-about">Stage Manager Countdown Timer &mdash; built for {{BRAND_FOOTER_NAME}}. Runs entirely offline in this browser tab.</div>
     <div class="footer-about">To share a broadcast: the link is already set up &mdash; just click Start Broadcasting, then copy the link that appears just below the buttons and send it (WhatsApp, email, whatever's easiest). Viewers just open it, no login or app needed. Every field in that box is still editable if you want your own link instead. Running several shows on different computers? Each one generates its own separate link automatically, so just copy the one shown on that computer.</div>
-    <div class="footer-about">Save Show / Load Show (top of the Running Order list) now saves your cue list as an Excel (.xlsx) file &mdash; open it, edit it, or hand it to someone else, then Load Show it back in. Load Show still opens older .json show files too, and can open a running order built from scratch in Excel (a "Type"/"Name" table with Minutes/Seconds columns). Loading always replaces the current list, so save first if you want to keep it.</div>
+    <div class="footer-about">Save Show / Load Show (top of the Running Order list) now saves your cue list as an Excel (.xlsx) file &mdash; open it, edit it, or hand it to someone else, then Load Show it back in. Load Show still opens older .json show files too, and can open a running order built from scratch in Excel (a "Type"/"Name" table with Minutes/Seconds columns). The saved file also includes each song's lyrics/speech notes in three extra columns &mdash; "Lyrics On" (Yes/blank), "Lyrics Layout" (Dock Strip/Focus Window/Scroll Column/Full Takeover), and "Lyrics" (the text itself, one line per line) &mdash; so you can write or edit the words for the Autocue feature directly in Excel too, then Load Show it back in. Loading always replaces the current list, so save first if you want to keep it.</div>
   </footer>
 
   </div><!-- /#showPage -->
@@ -1097,6 +1149,21 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   var presenterTheme = loadJSON('sm_theme_presenter', 'dark');
   var presenterScale = loadJSON('sm_timer_scale', 1);
   var currentCueId = null;      // id of cue currently loaded, or null = manual
+  // Song Lyrics / Autocue -- which cue's inline editor is expanded in the
+  // Running Order (only one open at a time), and the live "current line"
+  // index the SM is driving from the Autocue Operator panel for whichever
+  // cue is loaded right now. The index is deliberately NOT saved into the
+  // cue itself or persisted to localStorage -- it's a live-performance
+  // pointer, not show data, so it always starts fresh at 0 whenever a cue
+  // is (re)loaded, same as the countdown itself does.
+  var lyricsEditorOpenId = null;
+  var currentAutocueIdx = 0;
+  var LYRICS_LAYOUTS = [
+    { id: 'l1', name: 'Dock Strip', desc: 'Collapsed by default — tap to open a 3-line window' },
+    { id: 'l2', name: 'Focus Window', desc: 'Always on, 3 lines, minimal space' },
+    { id: 'l3', name: 'Scroll Column', desc: 'Always on, 7 lines with a line counter' },
+    { id: 'l4', name: 'Full Takeover', desc: 'Countdown shrinks, one giant current line' }
+  ];
   var remaining = 0;            // seconds (can go negative = overrun, or = elapsed in count-up mode)
   var countdownTargetAt = null; // ms epoch, set only by "Count to Doors/Show Start" — keeps the
                                  // countdown locked to the real clock time instead of drifting
@@ -1186,6 +1253,13 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     extDot: document.getElementById('extDot'),
     extStatusText: document.getElementById('extStatusText'),
     cueBody: document.getElementById('cueBody'),
+    autocueOpBox: document.getElementById('autocueOpBox'),
+    autocueOpName: document.getElementById('autocueOpName'),
+    autocueOpCounter: document.getElementById('autocueOpCounter'),
+    autocueOpCol: document.getElementById('autocueOpCol'),
+    autocueOpLines: document.getElementById('autocueOpLines'),
+    autocueOpRail: document.getElementById('autocueOpRail'),
+    autocueOpLayoutName: document.getElementById('autocueOpLayoutName'),
     emptyList: document.getElementById('emptyList'),
     cueCount: document.getElementById('cueCount'),
     cueTotal: document.getElementById('cueTotal'),
@@ -2114,6 +2188,17 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       message: currentMessage,
       messageFlashing: messageFlashing,
       alarmSilenced: alarmSilenced,
+      // Song Lyrics / Autocue -- lyricsOn is only true when this cue both has
+      // the toggle checked AND actual text typed in, so Crew/Extended Display
+      // never show an empty panel. lyricsLines is the already-parsed {h,t}
+      // array (not the raw text) so both follower surfaces stay in lockstep
+      // with exactly how this file's own parseLyricsLines() split it, even
+      // if that parsing logic ever changes. Left out entirely when off, to
+      // keep the payload small for the common case of a show with no lyrics.
+      lyricsOn: !!(bcCue && bcCue.lyricsOn && bcCue.lyrics && bcCue.lyrics.replace(/\s+/g,'')),
+      lyricsLayout: (bcCue && bcCue.lyricsLayout) || 'l2',
+      lyricsLines: (bcCue && bcCue.lyricsOn && bcCue.lyrics && bcCue.lyrics.replace(/\s+/g,'')) ? parseLyricsLines(bcCue.lyrics) : [],
+      lyricsIdx: currentAutocueIdx || 0,
       updatedAt: Date.now()
     };
     // "advanced" (Firebase) mode uses PATCH so this per-second write only merges
@@ -3704,7 +3789,19 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       delBtn.className = 'icon-btn danger'; delBtn.title = 'Delete'; delBtn.textContent = '✕';
       delBtn.addEventListener('click', function(){ deleteCue(c.id); });
 
+      var lyricsBtn = document.createElement('button');
+      lyricsBtn.type = 'button';
+      var lyricsHasContent = !!(c.lyricsOn && c.lyrics && c.lyrics.replace(/\s+/g,''));
+      lyricsBtn.className = 'icon-btn lyrics-btn' + (lyricsHasContent ? ' active' : '') + (lyricsEditorOpenId === c.id ? ' open' : '');
+      lyricsBtn.title = 'Song Lyrics / Autocue for this cue';
+      lyricsBtn.textContent = '♪';
+      lyricsBtn.addEventListener('click', function(){
+        lyricsEditorOpenId = (lyricsEditorOpenId === c.id) ? null : c.id;
+        renderCueList();
+      });
+
       actions.appendChild(loadBtn);
+      actions.appendChild(lyricsBtn);
       actions.appendChild(dragHandle);
       actions.appendChild(delBtn);
       tdActions.appendChild(actions);
@@ -3718,9 +3815,97 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       tr.appendChild(tdActions);
       el.cueBody.appendChild(tr);
       growNotes(); // measure scrollHeight now that the textarea is attached to the document
+
+      if(lyricsEditorOpenId === c.id){
+        el.cueBody.appendChild(buildLyricsEditorRow(c));
+      }
     });
 
     updateNextUpLine();
+  }
+
+  // Inline full-width editor for a cue's Song Lyrics / Autocue, expanded
+  // below its row in the Running Order when the ♪ button is clicked. Enable
+  // is separate from having text typed in, so the SM can prep lyrics ahead
+  // of time and only switch them live for the performer/crew when ready --
+  // and can just as easily switch them back off again without losing the
+  // text. The layout chosen here is the ONE layout both the Extended
+  // Display and the Crew page will use for this cue (Erik chose one shared
+  // layout across both screens, picked per song, rather than a single
+  // show-wide setting).
+  function buildLyricsEditorRow(c){
+    var tr = document.createElement('tr');
+    tr.className = 'lyrics-editor-row';
+    var td = document.createElement('td');
+    td.colSpan = 7;
+    var box = document.createElement('div');
+    box.className = 'lyrics-editor';
+
+    var head = document.createElement('div');
+    head.className = 'lyrics-editor-head';
+    var onLabel = document.createElement('label');
+    onLabel.className = 'lyrics-on-toggle';
+    var onCheck = document.createElement('input');
+    onCheck.type = 'checkbox';
+    onCheck.checked = !!c.lyricsOn;
+    onCheck.addEventListener('change', function(){
+      c.lyricsOn = onCheck.checked;
+      persist();
+      renderCueList();
+      if(c.id === currentCueId){ currentAutocueIdx = 0; updatePresenter(); renderAutocueOperator(); broadcastState(); }
+    });
+    onLabel.appendChild(onCheck);
+    onLabel.appendChild(document.createTextNode(' Enable Song Lyrics / Autocue for this cue'));
+    head.appendChild(onLabel);
+
+    var closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'icon-btn';
+    closeBtn.title = 'Close';
+    closeBtn.textContent = '✕';
+    closeBtn.addEventListener('click', function(){ lyricsEditorOpenId = null; renderCueList(); });
+    head.appendChild(closeBtn);
+    box.appendChild(head);
+
+    var layoutRow = document.createElement('div');
+    layoutRow.className = 'lyrics-layout-row';
+    LYRICS_LAYOUTS.forEach(function(L){
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'lyrics-layout-btn' + (((c.lyricsLayout || 'l2') === L.id) ? ' active' : '');
+      b.innerHTML = '<b>' + escapeHtml(L.name) + '</b><span>' + escapeHtml(L.desc) + '</span>';
+      b.addEventListener('click', function(){
+        c.lyricsLayout = L.id;
+        persist();
+        renderCueList();
+        if(c.id === currentCueId){ updatePresenter(); renderAutocueOperator(); broadcastState(); }
+      });
+      layoutRow.appendChild(b);
+    });
+    box.appendChild(layoutRow);
+
+    var ta = document.createElement('textarea');
+    ta.className = 'lyrics-textarea';
+    ta.rows = 8;
+    ta.spellcheck = false;
+    ta.placeholder = 'One line per lyric.\nMark a section heading either by wrapping it in [Brackets] — e.g. [Chorus] — or writing it in ALL CAPS on its own short line.';
+    ta.value = c.lyrics || '';
+    ta.addEventListener('change', function(){
+      c.lyrics = ta.value;
+      persist();
+      renderCueList();
+      if(c.id === currentCueId){ currentAutocueIdx = 0; updatePresenter(); renderAutocueOperator(); broadcastState(); }
+    });
+    box.appendChild(ta);
+
+    var hint = document.createElement('div');
+    hint.className = 'lyrics-editor-hint';
+    hint.textContent = 'Shown to the performer on the Extended Display and to crew on their broadcast page, in the layout chosen above. Once this cue is loaded, drive which line is highlighted from the Autocue Operator panel below Crew Talk.';
+    box.appendChild(hint);
+
+    td.appendChild(box);
+    tr.appendChild(td);
+    return tr;
   }
 
   // Drag-to-reorder: grabbing the handle slides the row along with the pointer
@@ -3744,7 +3929,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       tr.style.transform = 'translateY(' + (e.clientY - startY) + 'px)';
       clearIndicators();
       dropBeforeId = null;
-      var rows = Array.prototype.slice.call(el.cueBody.querySelectorAll('tr')).filter(function(r){ return r !== tr; });
+      var rows = Array.prototype.slice.call(el.cueBody.querySelectorAll('tr')).filter(function(r){ return r !== tr && !r.classList.contains('lyrics-editor-row'); });
       for(var i=0;i<rows.length;i++){
         var rect = rows[i].getBoundingClientRect();
         if(e.clientY < rect.top + rect.height/2){
@@ -3793,8 +3978,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   }
   function deleteCue(id){
     cueList = cueList.filter(function(c){return c.id!==id;});
-    if(currentCueId===id) currentCueId=null;
-    persist(); renderCueList();
+    if(currentCueId===id){ currentCueId=null; currentAutocueIdx=0; }
+    if(lyricsEditorOpenId===id) lyricsEditorOpenId=null;
+    persist(); renderCueList(); renderAutocueOperator();
   }
   function addCue(type){
     var cue = { id: uid(), type: type, name: type==='changeover' ? 'Changeover' : 'New Act', duration: type==='changeover' ? 300 : 900 };
@@ -3921,9 +4107,73 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     stopTimerInternal(false);
     updateTimeDisplay();
     renderCueList();
+    currentAutocueIdx = 0; // fresh cue -- always start the autocue pointer at the top
     updatePresenter();
+    renderAutocueOperator();
     saveRunningState();
   }
+
+  // Autocue Operator -- the SM's own always-dense "scroll column" view of
+  // whichever lyrics are attached to the cue that's currently loaded, used
+  // to drive the single shared "current line" index that both the Extended
+  // Display and the Crew page follow (as read-only viewers) in whichever
+  // layout was chosen for this song. Only one cue is ever "live" at a time
+  // (whatever's currently loaded), so this panel always reflects that cue.
+  function currentAutocueCue(){
+    if(!currentCueId) return null;
+    var idx = findCueIndex(currentCueId);
+    var c = idx >= 0 ? cueList[idx] : null;
+    if(!c || !c.lyricsOn || !c.lyrics || !c.lyrics.replace(/\s+/g,'')) return null;
+    return c;
+  }
+  function renderAutocueOperator(){
+    var c = currentAutocueCue();
+    if(!c){ el.autocueOpBox.hidden = true; return; }
+    el.autocueOpBox.hidden = false;
+    var lines = parseLyricsLines(c.lyrics);
+    currentAutocueIdx = autocueClampIdx(lines, currentAutocueIdx);
+    el.autocueOpName.textContent = c.name || '';
+    el.autocueOpCounter.textContent = lines.length ? ('Line ' + (currentAutocueIdx + 1) + ' / ' + lines.length) : '';
+    var layoutMeta = LYRICS_LAYOUTS.filter(function(L){ return L.id === (c.lyricsLayout || 'l2'); })[0];
+    el.autocueOpLayoutName.textContent = layoutMeta ? layoutMeta.name : 'Focus Window';
+    autocueRenderInto(el.autocueOpCol.firstElementChild, 'l3', lines, currentAutocueIdx);
+    // Clicking any visible line jumps straight to it -- quicker for the
+    // operator than scrolling line-by-line to catch up after a skip.
+    Array.prototype.forEach.call(el.autocueOpLines.children, function(lineEl, i){
+      var targetIdx = currentAutocueIdx - 3 + i;
+      lineEl.onclick = function(){ setAutocueIdx(targetIdx); };
+    });
+  }
+  function setAutocueIdx(i){
+    var c = currentAutocueCue();
+    if(!c) return;
+    var lines = parseLyricsLines(c.lyrics);
+    var next = autocueClampIdx(lines, i);
+    if(next === currentAutocueIdx) return;
+    currentAutocueIdx = next;
+    renderAutocueOperator();
+    updatePresenter();
+    broadcastState();
+  }
+  (function wireAutocueOperatorScroll(){
+    var acc = 0, THRESH = 55;
+    el.autocueOpCol.addEventListener('wheel', function(e){
+      if(!currentAutocueCue()) return;
+      e.preventDefault();
+      acc += e.deltaY;
+      var guard = 0;
+      while(Math.abs(acc) >= THRESH && guard < 20){
+        setAutocueIdx(currentAutocueIdx + (acc > 0 ? 1 : -1));
+        acc -= (acc > 0 ? THRESH : -THRESH);
+        guard++;
+      }
+    }, { passive: false });
+    el.autocueOpCol.addEventListener('keydown', function(e){
+      if(!currentAutocueCue()) return;
+      if(e.key === 'ArrowDown'){ e.preventDefault(); setAutocueIdx(currentAutocueIdx + 1); }
+      if(e.key === 'ArrowUp'){ e.preventDefault(); setAutocueIdx(currentAutocueIdx - 1); }
+    });
+  })();
 
   function setBadge(type){
     el.currentBadge.className = 'badge ' + (type || 'manual');
@@ -3981,6 +4231,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         remaining = 0;
       }
       renderCueList();
+      renderAutocueOperator();
     }
     if(el.upAlertLabel && el.upAlertRow){
       var showUpAlert = mode === 'up';
@@ -4044,6 +4295,92 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     return 'rgb(' + rgb.join(',') + ')';
   }
   // ===== SYNC BLOCK END: gradientColorAt =====
+
+  // ===== SYNC BLOCK START: autocueLyrics =====
+  // Song Lyrics / Autocue -- shared between this file (the Extended Display
+  // popup and the Stage Manager's own operator panel) and viewer_template.html
+  // (the Crew page). Turns the raw text the SM typed into a per-cue's lyrics
+  // box into an ordered array of {h, t} lines -- h true marks a section
+  // heading, detected either by wrapping a line in [Brackets] or writing a
+  // short line in ALL CAPS -- then draws whichever of the 4 layouts is
+  // chosen into a already-mounted skeleton. This exact block also lives in
+  // viewer_template.html -- if you change the logic here, copy the same
+  // change over there too, and vice versa, so both surfaces always agree on
+  // where "line 12" is and how headings are detected.
+  function parseLyricsLines(raw){
+    var out = [];
+    (raw || '').split(/\r\n|\r|\n/).forEach(function(line){
+      var t = line.replace(/^\s+|\s+$/g, '');
+      if(!t) return;
+      var isHeading = false;
+      var bm = t.match(/^\[(.+)\]$/);
+      if(bm){ t = bm[1].replace(/^\s+|\s+$/g, ''); isHeading = true; }
+      else if(t.length <= 24 && t === t.toUpperCase() && /[A-Z]/.test(t)){ isHeading = true; }
+      out.push({ h: isHeading, t: t });
+    });
+    return out;
+  }
+  function autocueClampIdx(lines, i){
+    if(!lines || !lines.length) return 0;
+    return Math.max(0, Math.min(lines.length - 1, i));
+  }
+  // Markup mounted inside the autocue container -- l1 (dock strip) and l2
+  // (focus window) share the same 3-line prev/cur/next window; l3 (scroll
+  // column) gets its own multi-line + dot-rail layout; l4 (full takeover)
+  // reuses the 3-line window with larger current-line styling via CSS.
+  function autocueSkeletonHTML(layoutId){
+    if(layoutId === 'l3'){
+      return '<div class="ac-col"><div class="ac-col-lines"></div><div class="ac-rail"></div></div><div class="ac-counter"></div>';
+    }
+    return '<div class="ac-line ac-prev"></div><div class="ac-line ac-cur"></div><div class="ac-line ac-next"></div>';
+  }
+  function autocueSetLine(lineEl, line){
+    if(!lineEl) return;
+    if(!line){ lineEl.textContent = ''; lineEl.classList.add('ac-empty'); lineEl.classList.remove('ac-heading'); return; }
+    lineEl.classList.remove('ac-empty');
+    lineEl.classList.toggle('ac-heading', !!line.h);
+    lineEl.textContent = line.t;
+  }
+  function autocueRenderInto(root, layoutId, lines, idx){
+    if(!root) return;
+    idx = autocueClampIdx(lines, idx);
+    if(layoutId === 'l3'){
+      var wrap = root.querySelector('.ac-col-lines');
+      if(!wrap) return;
+      wrap.innerHTML = '';
+      var span = 3;
+      for(var d = -span; d <= span; d++){
+        var line = lines[idx + d];
+        var div = document.createElement('div');
+        div.className = 'ac-col-line';
+        if(!line){ div.classList.add('ac-empty'); wrap.appendChild(div); continue; }
+        div.textContent = line.t;
+        if(line.h) div.classList.add('ac-heading');
+        if(d === 0){ div.classList.add('ac-current'); div.style.opacity = 1; }
+        else { div.style.opacity = Math.max(0.16, 1 - Math.abs(d) * 0.2); }
+        wrap.appendChild(div);
+      }
+      var counter = root.parentElement ? root.parentElement.querySelector('.ac-counter') : null;
+      if(counter) counter.textContent = lines.length ? ('Line ' + (idx + 1) + ' / ' + lines.length) : '';
+      var rail = root.querySelector('.ac-rail');
+      if(rail){
+        rail.innerHTML = '';
+        var frag = document.createDocumentFragment();
+        lines.forEach(function(_, i2){
+          var dot = document.createElement('span');
+          dot.className = 'ac-dot' + (i2 === idx ? ' ac-dot-active' : '');
+          frag.appendChild(dot);
+        });
+        rail.appendChild(frag);
+      }
+      return;
+    }
+    autocueSetLine(root.querySelector('.ac-prev'), lines[idx - 1]);
+    autocueSetLine(root.querySelector('.ac-cur'), lines[idx]);
+    autocueSetLine(root.querySelector('.ac-next'), lines[idx + 1]);
+  }
+  // ===== SYNC BLOCK END: autocueLyrics =====
+
   function presenterCountdownColor(frac){
     return gradientColorAt(frac, presenterTheme);
   }
@@ -4247,6 +4584,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     updateTimeDisplay();
     renderCueList();
     updatePresenter();
+    renderAutocueOperator();
   }
 
   // Count Up has no fixed end, so unlike Count Down there was previously no
@@ -4309,6 +4647,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     updateTimeDisplay();
     renderCueList();
     updatePresenter();
+    renderAutocueOperator();
   }
 
   function adjustTime(deltaSeconds){
@@ -4501,6 +4840,55 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     '#messageSubTime.danger{color:#B3271A;}'+
     '#stage.alarm #messageText, #stage.alarm #messageSubTime, #stage.alarm #messageSubTimeLabel{color:#fff !important;text-shadow:0 2px 6px rgba(0,0,0,.6);}'+
     '#stage.alarm #messageSubTimeWrap{border-top-color:rgba(255,255,255,.4);}'+
+    // ---- Song Lyrics / Autocue -- mounted below the countdown, one of 4
+    // layouts chosen per-song by the SM. Shares the same ac-prev/ac-cur/
+    // ac-next and ac-col/ac-col-lines/ac-rail markup that autocueRenderInto()
+    // (see the autocueLyrics SYNC BLOCK) already knows how to fill, so this
+    // file's own JS drives it exactly like it drives the SM's own Autocue
+    // Operator panel -- just with a different skeleton per layout.
+    // Deliberately NOT position:fixed -- it's a normal child of #stage's
+    // centered flex column (same as #badge/#actName/#countdown/#nextLine
+    // above it), so however tall a given layout gets (Layout 3's 7-line
+    // column especially), the whole group re-centers together instead of
+    // this panel floating at a fixed height and overlapping #nextLine.
+    '#autocuePanel{width:100%;max-width:900px;box-sizing:border-box;padding:0 60px;margin-top:22px;display:none;}'+
+    '#autocuePanel .ac-line{font-size:22px;line-height:1.4;color:var(--p-dim);text-align:center;transition:opacity .18s ease,color .18s ease;}'+
+    '#autocuePanel .ac-line.ac-heading{font-size:15px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--p-gold);}'+
+    '#autocuePanel .ac-line.ac-empty{opacity:0;}'+
+    '#autocuePanel .ac-cur{color:var(--p-text);font-weight:700;font-size:30px;}'+
+    '#autocuePanel .ac-cur.ac-heading{font-size:20px;}'+
+    '#autocuePanel .ac-label{font-size:12px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--p-dim);text-align:center;margin-bottom:4px;}'+
+    '#autocuePanel.ac-l1 .ac-strip{display:flex;align-items:center;justify-content:center;gap:18px;cursor:pointer;padding:8px 0;font-size:16px;color:var(--p-dim);letter-spacing:.4px;}'+
+    '#autocuePanel.ac-l1 .ac-strip b{color:var(--p-text);}'+
+    '#autocuePanel.ac-l1 .ac-chev{font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--p-gold);}'+
+    '#autocuePanel .ac-body{max-height:220px;overflow:hidden;transition:max-height .22s ease;}'+
+    '#autocuePanel .ac-body.ac-collapsed{max-height:0;}'+
+    '#autocuePanel.ac-l3 .ac-col{display:flex;gap:20px;padding:8px 0;max-width:900px;margin:0 auto;}'+
+    '#autocuePanel.ac-l3 .ac-col-lines{flex:1;display:flex;flex-direction:column;gap:10px;min-width:0;}'+
+    '#autocuePanel.ac-l3 .ac-col-line{font-size:19px;line-height:1.35;color:var(--p-dim);text-align:left;transition:opacity .18s ease;}'+
+    '#autocuePanel.ac-l3 .ac-col-line.ac-current{color:var(--p-text);font-weight:700;font-size:23px;}'+
+    '#autocuePanel.ac-l3 .ac-col-line.ac-current::before{content:"";display:inline-block;width:4px;height:16px;background:var(--p-gold);margin-right:10px;vertical-align:middle;}'+
+    '#autocuePanel.ac-l3 .ac-col-line.ac-heading{font-weight:700;letter-spacing:2px;text-transform:uppercase;font-size:14px;color:var(--p-gold);}'+
+    '#autocuePanel.ac-l3 .ac-col-line.ac-empty{opacity:0;}'+
+    '#autocuePanel.ac-l3 .ac-rail{flex:none;width:8px;display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:4px;max-height:220px;overflow:hidden;justify-content:center;}'+
+    '#autocuePanel.ac-l3 .ac-dot{width:4px;height:4px;border-radius:50%;background:rgba(128,128,128,.3);flex:none;}'+
+    '#autocuePanel.ac-l3 .ac-dot-active{background:var(--p-gold);width:5px;height:12px;border-radius:2px;}'+
+    '#autocuePanel.ac-l3 .ac-counter{font-family:"JetBrains Mono","SF Mono","Consolas",monospace;font-size:13px;color:var(--p-idle);text-align:right;max-width:900px;margin:0 auto;padding-top:6px;}'+
+    // Full Takeover moves the countdown itself out of the way, into a small
+    // corner readout under the wall clock (Erik, 2026-09-27) -- rather than
+    // just shrinking it in place -- so the lyrics own the whole screen
+    // instead of still sharing the middle with a smaller countdown. Overrun
+    // moves with it, right underneath. Both keep their usual color logic
+    // (the green/orange/red gradient, the white alarm-flash override) --
+    // only their position and size change.
+    '#stage.ac-l4-active #badge, #stage.ac-l4-active #actName, #stage.ac-l4-active #nextLine{display:none !important;}'+
+    '#stage.ac-l4-active #countdown{position:fixed;top:78px;right:100px;font-size:32px;letter-spacing:2px;line-height:1;text-align:right;z-index:3;}'+
+    '#stage.ac-l4-active #overrunTag{position:fixed;top:118px;right:100px;margin-top:0;font-size:13px;letter-spacing:2px;z-index:3;}'+
+    '#autocuePanel.ac-l4{margin-top:0;}'+
+    '#autocuePanel.ac-l4 .ac-giant{max-width:1200px;margin:0 auto;text-align:center;padding:0 60px;}'+
+    '#autocuePanel.ac-l4 .ac-side{font-size:24px;color:var(--p-dim);}'+
+    '#autocuePanel.ac-l4 .ac-cur{font-size:min(8vw,96px);font-weight:800;color:var(--p-text);line-height:1.15;margin:18px 0;font-family:"Big Shoulders Display","Archivo",sans-serif;text-transform:uppercase;}'+
+    '#autocuePanel.ac-l4 .ac-cur.ac-heading{color:var(--p-gold);font-size:44px;}'+
     '</style></head><body>'+
     '<div id="stage">'+
       '<div id="logoCorner"><img src="'+(presenterTheme === 'light' ? LOGO_SRC_LIGHT : LOGO_SRC_DARK)+'" alt="{{BRAND_TITLE}}"></div>'+
@@ -4513,12 +4901,85 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       '<div id="overrunTag">OVERRUN</div>'+
       '<div id="nextLine"></div>'+
       '<div id="idleMsg">Waiting for cue&hellip;</div>'+
+      '<div id="autocuePanel"></div>'+
       '<div id="messageOverlay"><div id="messageText"></div>'+
         '<div id="messageSubTimeWrap"><div id="messageSubTimeLabel">Time Remaining</div><div id="messageSubTime">00:00:00</div></div>'+
       '</div>'+
       '<div id="progressTrack"><div id="progressFill"></div></div>'+
     '</div>'+
     '</body></html>';
+  }
+
+  // Builds the inner markup for whichever autocue layout is mounted in the
+  // Extended Display's #autocuePanel -- only rebuilt when the layout choice
+  // actually changes (see updatePresenterAutocue), so the collapse state of
+  // Layout 1's strip survives repeated per-second updatePresenter() calls.
+  function presenterAutocueSkeletonHTML(layoutId){
+    if(layoutId === 'l1'){
+      return '<div class="ac-strip" id="acStrip"><span id="acStripNow"></span><span class="ac-chev" id="acChev">Show &#9662;</span></div>'+
+             '<div class="ac-body ac-collapsed" id="acBody"><div class="ac-window">'+autocueSkeletonHTML('l1')+'</div></div>';
+    }
+    if(layoutId === 'l3'){
+      return '<div class="ac-label">Autocue</div>' + autocueSkeletonHTML('l3') + '<div class="ac-counter" id="acCounter"></div>';
+    }
+    if(layoutId === 'l4'){
+      return '<div class="ac-giant">' + autocueSkeletonHTML('l1').replace(/ac-line/g, 'ac-line ac-side') + '</div>';
+    }
+    return '<div class="ac-label">Autocue</div><div class="ac-window">'+autocueSkeletonHTML('l2')+'</div>';
+  }
+
+  // Repaints the Extended Display's autocue panel from whichever cue is
+  // currently loaded -- a read-only follower of currentAutocueIdx, the same
+  // pointer the SM's Autocue Operator panel (below Crew Talk) drives. The
+  // Crew page follows the exact same pointer over the broadcast link; see
+  // broadcastState()'s lyricsIdx field.
+  function updatePresenterAutocue(d, curCue){
+    var panel = d.getElementById('autocuePanel');
+    var stageEl = d.getElementById('stage');
+    if(!panel) return;
+    var on = !!(curCue && curCue.lyricsOn && curCue.lyrics && curCue.lyrics.replace(/\s+/g,''));
+    if(!on){
+      panel.style.display = 'none';
+      panel.removeAttribute('data-layout');
+      if(stageEl) stageEl.classList.remove('ac-l4-active');
+      return;
+    }
+    var layoutId = curCue.lyricsLayout || 'l2';
+    if(panel.getAttribute('data-layout') !== layoutId){
+      panel.innerHTML = presenterAutocueSkeletonHTML(layoutId);
+      panel.className = 'ac-' + layoutId;
+      panel.setAttribute('data-layout', layoutId);
+      if(layoutId === 'l1'){
+        var strip = d.getElementById('acStrip');
+        if(strip){
+          strip.addEventListener('click', function(){
+            var body = d.getElementById('acBody');
+            var chev = d.getElementById('acChev');
+            var open = !body.classList.contains('ac-collapsed');
+            body.classList.toggle('ac-collapsed', open);
+            if(chev) chev.innerHTML = open ? 'Show &#9662;' : 'Hide &#9652;';
+          });
+        }
+      }
+    }
+    panel.style.display = 'block';
+    if(stageEl) stageEl.classList.toggle('ac-l4-active', layoutId === 'l4');
+
+    var lines = parseLyricsLines(curCue.lyrics);
+    var idx = autocueClampIdx(lines, currentAutocueIdx);
+    if(layoutId === 'l1'){
+      var stripNow = d.getElementById('acStripNow');
+      if(stripNow) stripNow.innerHTML = '&#9834; Autocue loaded &mdash; <b>' + escapeHtml(curCue.name || '') + '</b>';
+      autocueRenderInto(panel.querySelector('.ac-window'), 'l1', lines, idx);
+    } else if(layoutId === 'l3'){
+      autocueRenderInto(panel.querySelector('.ac-col'), 'l3', lines, idx);
+      var counter = panel.querySelector('.ac-counter');
+      if(counter) counter.textContent = lines.length ? ('Line ' + (idx + 1) + ' / ' + lines.length) : '';
+    } else if(layoutId === 'l4'){
+      autocueRenderInto(panel.querySelector('.ac-giant'), 'l1', lines, idx);
+    } else {
+      autocueRenderInto(panel.querySelector('.ac-window'), 'l2', lines, idx);
+    }
   }
 
   function openPresenterWindow(){
@@ -4596,6 +5057,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       nextLineEl0.style.display = 'none';
       overrunEl0.classList.remove('show');
       stageEl0.classList.toggle('alarm', messageFlashing);
+      stageEl0.classList.remove('ac-l4-active');
+      var acPanelHidden = d.getElementById('autocuePanel');
+      if(acPanelHidden) acPanelHidden.style.display = 'none';
       var msgProgFillEl = d.getElementById('progressFill');
       if(msgProgFillEl) msgProgFillEl.style.width = '0%';
 
@@ -4735,6 +5199,8 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     } else {
       d.getElementById('nextLine').innerHTML = '';
     }
+
+    updatePresenterAutocue(d, curCue);
   }
 
   /* ---------------- custom full-screen message ---------------- */
@@ -4821,7 +5287,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   renderCustomKindTabs();
   el.clearListBtn.addEventListener('click', function(){
     if(confirm('Clear the entire running order? This cannot be undone.')){
-      cueList = []; currentCueId=null; persist(); renderCueList();
+      cueList = []; currentCueId=null; lyricsEditorOpenId=null; currentAutocueIdx=0; persist(); renderCueList(); renderAutocueOperator();
     }
   });
 
@@ -4860,11 +5326,14 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     el.showCurfew.value = '';
     el.actName.value = '';
 
+    lyricsEditorOpenId = null;
+    currentAutocueIdx = 0;
     persist();
     setBadge('manual');
     renderCueList();
     updateTimeDisplay();
     updatePresenter();
+    renderAutocueOperator();
 
     // Fresh broadcast room: new Room ID, chat cleared, links regenerated,
     // broadcasting stopped until Start Broadcasting is pressed again.
@@ -4909,6 +5378,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
           out.kindLabel = c.kindLabel || 'Custom';
           out.kindColor = c.kindColor || '#8890a8';
         }
+        if(c.lyricsOn) out.lyricsOn = true;
+        if(c.lyrics) out.lyrics = c.lyrics;
+        if(c.lyricsLayout) out.lyricsLayout = c.lyricsLayout;
         return out;
       })
     };
@@ -5050,8 +5522,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
   // worksheet of a just-written .xlsx ArrayBuffer. Falls back to returning the
   // original buffer untouched if anything about the ZIP isn't what we expect,
   // so a save can never be broken by this cosmetic touch-up.
-  function applyColumnWrapText(arrBuf, colLetter){
+  function applyColumnWrapText(arrBuf, colLetters){
     try {
+      var letters = Array.isArray(colLetters) ? colLetters : [colLetters];
       var dec = new TextDecoder();
       var enc = new TextEncoder();
       var entries = readZipStoreEntries(arrBuf).map(function(en){
@@ -5068,8 +5541,10 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         }
         if(en.name === 'xl/worksheets/sheet1.xml'){
           var xml2 = dec.decode(en.data);
-          var re = new RegExp('(<c r="' + colLetter + '\\d+")', 'g');
-          xml2 = xml2.replace(re, '$1 s="1"');
+          letters.forEach(function(colLetter){
+            var re = new RegExp('(<c r="' + colLetter + '\\d+")', 'g');
+            xml2 = xml2.replace(re, '$1 s="1"');
+          });
           return { name: en.name, data: enc.encode(xml2) };
         }
         return en;
@@ -5091,7 +5566,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       ['Show Start', data.showStartTime || ''],
       ['Curfew', data.showCurfew || ''],
       [],
-      ['Type', 'Name', 'Minutes', 'Seconds', 'Notes', 'Print Note', 'Color', 'Warn (s)', 'TC', 'Direction']
+      ['Type', 'Name', 'Minutes', 'Seconds', 'Notes', 'Print Note', 'Color', 'Warn (s)', 'TC', 'Direction', 'Lyrics On', 'Lyrics Layout', 'Lyrics']
     ];
     data.cueList.forEach(function(c){
       var typeLabel = c.type === 'performance' ? 'Performance' : c.type === 'changeover' ? 'Changeover' : (c.kindLabel || 'Custom');
@@ -5099,10 +5574,13 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       var secs = (c.duration || 0) % 60;
       var color = isCustomType(c.type) ? (c.kindColor || '') : '';
       var warnAt = (typeof c.warnAt === 'number' && c.warnAt > 0) ? c.warnAt : '';
-      aoa.push([typeLabel, c.name || '', mins, secs, c.notes || '', c.printNote ? 'Yes' : '', color, warnAt, c.tc || '', c.countDir === 'up' ? 'Up' : 'Down']);
+      var lyricsOn = !!(c.lyricsOn && c.lyrics && c.lyrics.replace(/\s+/g, ''));
+      var lyricsLayoutInfo = lyricsOn ? LYRICS_LAYOUTS.filter(function(l){ return l.id === (c.lyricsLayout || 'l2'); })[0] : null;
+      aoa.push([typeLabel, c.name || '', mins, secs, c.notes || '', c.printNote ? 'Yes' : '', color, warnAt, c.tc || '', c.countDir === 'up' ? 'Up' : 'Down',
+        lyricsOn ? 'Yes' : '', lyricsLayoutInfo ? lyricsLayoutInfo.name : '', c.lyrics || '']);
     });
     var ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [{ wch: 16 }, { wch: 34 }, { wch: 9 }, { wch: 9 }, { wch: 24 }, { wch: 11 }, { wch: 10 }, { wch: 10 }, { wch: 13 }, { wch: 11 }];
+    ws['!cols'] = [{ wch: 16 }, { wch: 34 }, { wch: 9 }, { wch: 9 }, { wch: 24 }, { wch: 11 }, { wch: 10 }, { wch: 10 }, { wch: 13 }, { wch: 11 }, { wch: 10 }, { wch: 14 }, { wch: 40 }];
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Running Order');
     return wb;
@@ -5114,7 +5592,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     if(typeof XLSX !== 'undefined'){
       var wb = buildShowWorkbook(data);
       var arrBuf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
-      arrBuf = applyColumnWrapText(arrBuf, 'E'); // Notes is column E — wrap it so multi-line notes read properly in Excel
+      arrBuf = applyColumnWrapText(arrBuf, ['E', 'M']); // Notes (E) and Lyrics (M) — wrap them so multi-line text reads properly in Excel
       var blob = new Blob([arrBuf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       downloadBlob(blob, slugify(data.showName) + '-' + datePart + '.xlsx');
     } else {
@@ -5185,8 +5663,13 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
         cue.kindLabel = (c && typeof c.kindLabel === 'string' && c.kindLabel) || (k ? k.label : 'Custom');
         cue.kindColor = (c && typeof c.kindColor === 'string' && c.kindColor) || (k ? k.color : '#8890a8');
       }
+      if(c && typeof c.lyrics === 'string' && c.lyrics) cue.lyrics = c.lyrics;
+      if(c && c.lyricsOn) cue.lyricsOn = true;
+      if(c && ['l1','l2','l3','l4'].indexOf(c.lyricsLayout) !== -1) cue.lyricsLayout = c.lyricsLayout;
       return cue;
     });
+    lyricsEditorOpenId = null;
+    currentAutocueIdx = 0;
     if(typeof data.showName === 'string') el.showName.value = data.showName;
     syncShowNameDisplay();
     if(typeof data.showVenue === 'string') el.showVenue.value = data.showVenue;
@@ -5200,6 +5683,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     renderCueList();
     updateTimeDisplay();
     updatePresenter();
+    renderAutocueOperator();
     return true;
   }
 
@@ -5284,7 +5768,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
     function cellStr(v){ return (v === null || v === undefined) ? '' : String(v).trim(); }
 
     var headerRowIdx = -1;
-    var col = { type:-1, name:-1, min:-1, sec:-1, color:-1, notes:-1, print:-1, warn:-1, tc:-1, dir:-1 };
+    var col = { type:-1, name:-1, min:-1, sec:-1, color:-1, notes:-1, print:-1, warn:-1, tc:-1, dir:-1, lyricsOn:-1, lyricsLayout:-1, lyrics:-1 };
     for(var i=0;i<rows.length;i++){
       var row = rows[i] || [];
       var lower = row.map(function(c){ return cellStr(c).toLowerCase(); });
@@ -5302,6 +5786,9 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
           if(col.warn === -1 && lower[j].indexOf('warn') === 0) col.warn = j;
           if(col.tc === -1 && lower[j].indexOf('tc') === 0) col.tc = j;
           if(col.dir === -1 && lower[j].indexOf('direct') === 0) col.dir = j;
+          if(col.lyricsOn === -1 && lower[j].indexOf('lyrics on') === 0) col.lyricsOn = j;
+          if(col.lyricsLayout === -1 && lower[j].indexOf('lyrics layout') === 0) col.lyricsLayout = j;
+          if(col.lyrics === -1 && lower[j] === 'lyrics') col.lyrics = j;
         }
         break;
       }
@@ -5356,6 +5843,17 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
       if(tcCell) cue.tc = tcCell;
       var dirCell = col.dir !== -1 ? cellStr(dr[col.dir]).toLowerCase() : '';
       if(dirCell === 'up') cue.countDir = 'up';
+      var lyricsCell = col.lyrics !== -1 ? cellStr(dr[col.lyrics]) : '';
+      if(lyricsCell) cue.lyrics = lyricsCell.slice(0, 20000);
+      var lyricsOnRaw = col.lyricsOn !== -1 ? cellStr(dr[col.lyricsOn]).toLowerCase() : '';
+      if(lyricsCell && (lyricsOnRaw === 'yes' || lyricsOnRaw === 'y' || lyricsOnRaw === 'true' || lyricsOnRaw === '1')) cue.lyricsOn = true;
+      var lyricsLayoutRaw = col.lyricsLayout !== -1 ? cellStr(dr[col.lyricsLayout]) : '';
+      if(lyricsLayoutRaw){
+        var matchedLayout = LYRICS_LAYOUTS.filter(function(l){
+          return l.id === lyricsLayoutRaw.toLowerCase() || l.name.toLowerCase() === lyricsLayoutRaw.toLowerCase();
+        })[0];
+        if(matchedLayout) cue.lyricsLayout = matchedLayout.id;
+      }
       if(isCustomType(type)){
         cue.kindLabel = kindByLabel[typeLower].label;
         cue.kindColor = kindByLabel[typeLower].color;
@@ -5682,6 +6180,7 @@ var qrcode=function(){var t=function(t,r){var e=t,n=g[r],o=null,i=0,a=null,u=[],
 
   renderCueList();
   updateTimeDisplay();
+  renderAutocueOperator();
 })();
 </script>
 </body>

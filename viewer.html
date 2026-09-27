@@ -128,9 +128,16 @@
 
   /* Crew Talk bar: docked to the bottom of the screen and always visible
      (never behind the Crew Chat panel), with a fixed height regardless of
-     whether voice is joined so it never shifts the countdown above it. */
+     whether voice is joined so it never shifts the countdown above it --
+     that height (--voicebar-h) now also stretches to fit the Autocue panel
+     mounted below the voice controls (see #autocuePanel) whenever the
+     loaded cue has lyrics on, kept in sync by measuring the bar itself in
+     JS (see syncVoiceBarHeight()) rather than a second, separately-tracked
+     variable, so every other fixed element already anchored off
+     --voicebar-h (the progress bar, the chat/groups buttons, etc.) moves
+     up with it automatically. */
   #voiceBar{position:fixed;left:0;right:0;bottom:0;margin:0 auto;max-width:560px;
-    height:var(--voicebar-h);box-sizing:border-box;
+    min-height:var(--voicebar-h);box-sizing:border-box;transition:min-height .2s ease;
     background:rgba(19,31,27,.97);border-top:1px solid rgba(128,128,128,.25);
     padding:10px 14px calc(10px + env(safe-area-inset-bottom));
     display:flex;flex-direction:column;justify-content:center;gap:8px;z-index:22;}
@@ -222,6 +229,62 @@
     transition:transform .06s ease, box-shadow .06s ease, filter .15s ease;}
   #voiceLeaveBtn:hover{border-color:var(--danger);color:var(--danger);}
   #voiceLeaveBtn:active{transform:translateY(1px);}
+
+  /* ---- Song Lyrics / Autocue -- mounted below Push-to-Talk, inside the
+     same Crew Talk bar. Read-only here: the line highlighted always
+     follows whatever the Stage Manager's Autocue Operator panel is
+     currently pointed at (see broadcastState()'s lyricsIdx field), same
+     layout the SM chose for this song on the Extended Display too. */
+  #autocuePanel[hidden]{display:none;}
+  #autocuePanel{border-top:1px solid rgba(128,128,128,.2);padding-top:8px;margin-top:2px;}
+  #autocuePanel .ac-label{font-size:9.5px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--dim);text-align:center;margin-bottom:4px;}
+  #autocuePanel .ac-line{font-size:13px;line-height:1.4;color:var(--dim);text-align:center;padding:0 6px;transition:opacity .18s ease,color .18s ease;}
+  #autocuePanel .ac-line.ac-heading{font-family:inherit;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--gold-2);}
+  #autocuePanel .ac-line.ac-empty{opacity:0;}
+  #autocuePanel .ac-cur{color:var(--text);font-weight:700;font-size:16px;}
+  #autocuePanel .ac-cur.ac-heading{font-size:11.5px;}
+  #autocuePanel.ac-l1 .ac-strip{display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;user-select:none;font-size:11px;color:var(--dim);}
+  #autocuePanel.ac-l1 .ac-strip b{color:var(--text);}
+  #autocuePanel.ac-l1 .ac-chev{flex:none;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--gold-2);}
+  #autocuePanel .ac-body{max-height:150px;overflow:hidden;transition:max-height .2s ease;}
+  #autocuePanel .ac-body.ac-collapsed{max-height:0;}
+  #autocuePanel .ac-window{padding:6px 0 2px;}
+  #autocuePanel.ac-l3 .ac-col{display:flex;gap:8px;padding:2px 2px 6px;}
+  #autocuePanel.ac-l3 .ac-col-lines{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0;}
+  #autocuePanel.ac-l3 .ac-col-line{font-size:11.5px;line-height:1.3;color:var(--dim);text-align:left;transition:opacity .18s ease;}
+  #autocuePanel.ac-l3 .ac-col-line.ac-current{color:var(--text);font-weight:700;font-size:13px;}
+  #autocuePanel.ac-l3 .ac-col-line.ac-current::before{content:'';display:inline-block;width:3px;height:9px;background:var(--gold);margin-right:6px;vertical-align:middle;}
+  #autocuePanel.ac-l3 .ac-col-line.ac-heading{font-weight:700;letter-spacing:1.5px;text-transform:uppercase;font-size:9px;color:var(--gold-2);}
+  #autocuePanel.ac-l3 .ac-col-line.ac-empty{opacity:0;}
+  #autocuePanel.ac-l3 .ac-rail{flex:none;width:5px;display:flex;flex-direction:column;align-items:center;gap:2px;padding-top:2px;max-height:120px;overflow:hidden;justify-content:center;}
+  #autocuePanel.ac-l3 .ac-dot{width:3px;height:3px;border-radius:50%;background:rgba(128,128,128,.3);flex:none;}
+  #autocuePanel.ac-l3 .ac-dot-active{background:var(--gold);width:4px;height:8px;border-radius:2px;}
+  #autocuePanel.ac-l3 .ac-counter{font-family:'JetBrains Mono','SF Mono','Consolas',monospace;font-size:9px;color:var(--idle);text-align:right;padding:0 2px 2px;}
+  /* Full Takeover: on the Extended (performer) Display the lyrics take over
+     and the countdown tucks into a corner readout -- but Erik (2026-09-27)
+     wants the Crew/Viewer screen kept "not so much" that way BY DEFAULT: the
+     timer stays put at its normal size and position, badge/act/next line
+     keep showing as usual, and the Autocue panel simply grows a bigger
+     current line inside its own space under Push-to-Talk.
+     Erik still wants it as an OPTION here though -- so #acFocusBtn below is
+     a per-device toggle any crew/viewer screen can switch on for itself
+     (remembered via localStorage, independent of the layout the Stage
+     Manager chose), applying that same corner-timer treatment on request. */
+  #autocuePanel.ac-l4 .ac-giant{text-align:center;padding:6px 2px;}
+  #autocuePanel.ac-l4 .ac-side{font-size:12px;color:var(--dim);}
+  #autocuePanel.ac-l4 .ac-cur{font-size:20px;font-weight:800;color:var(--text);line-height:1.25;margin:8px 0;text-transform:uppercase;}
+  #autocuePanel.ac-l4 .ac-cur.ac-heading{color:var(--gold-2);font-size:15px;}
+  .ac-focus-btn{display:block;margin:0 auto 6px;padding:5px 12px;font-size:9.5px;font-weight:700;
+    letter-spacing:1px;text-transform:uppercase;color:var(--dim);background:rgba(128,128,128,.1);
+    border:1px solid rgba(255,255,255,.14);border-radius:0;cursor:pointer;transition:filter .15s ease,color .15s ease,border-color .15s ease;}
+  .ac-focus-btn:hover{filter:brightness(1.15);}
+  .ac-focus-btn:active{transform:translateY(1px);}
+  .ac-focus-btn.active{color:var(--gold-2);border-color:var(--gold-2);background:rgba(212,175,55,.12);}
+  /* Applied only while #acFocusBtn's opt-in is on -- same corner-timer
+     treatment as the Extended Display's automatic Full Takeover mode. */
+  #stage.ac-focus-active #badge, #stage.ac-focus-active #actName, #stage.ac-focus-active #nextLine{display:none !important;}
+  #stage.ac-focus-active #countdown{position:fixed;top:58px;right:90px;font-size:22px;letter-spacing:1px;line-height:1;text-align:right;z-index:3;}
+  #stage.ac-focus-active #overrunTag{position:fixed;top:86px;right:90px;margin-top:0;font-size:10px;letter-spacing:1.5px;z-index:3;}
   /* Short landscape screens (a phone turned sideways) have the least
      vertical room of any layout we support: shrink the round button, trim
      the bar's own padding, and shrink the fixed bar height to match, so it
@@ -374,6 +437,10 @@
     </div>
   </div>
   <div id="voiceAudioSinks" hidden></div>
+  <div id="autocuePanel" hidden>
+    <button id="acFocusBtn" class="ac-focus-btn" type="button" title="Make the lyrics bigger on this screen and move the countdown out of the way -- your own choice, just for this device, separate from what the Stage Manager picked">Focus on lyrics</button>
+    <div id="acContent"></div>
+  </div>
 </div>
 
 <button id="chatToggleBtn" title="Crew chat">&#128172;<span id="chatBadge">0</span></button>
@@ -466,6 +533,9 @@
     voiceLeaveBtn: document.getElementById('voiceLeaveBtn'),
     voiceAudioSinks: document.getElementById('voiceAudioSinks'),
     voiceBar: document.getElementById('voiceBar'),
+    autocuePanel: document.getElementById('autocuePanel'),
+    acContent: document.getElementById('acContent'),
+    acFocusBtn: document.getElementById('acFocusBtn'),
     voiceGroupsToggleBtn: document.getElementById('voiceGroupsToggleBtn'),
     voiceGroupsPanel: document.getElementById('voiceGroupsPanel'),
     voiceGroupsNewBtn: document.getElementById('voiceGroupsNewBtn'),
@@ -1784,6 +1854,90 @@
   }
   // ===== SYNC BLOCK END: gradientColorAt =====
 
+  // ===== SYNC BLOCK START: autocueLyrics =====
+  // Song Lyrics / Autocue -- shared between this file (the Crew page) and
+  // template.html (the Extended Display popup and the Stage Manager's own
+  // operator panel). Turns the raw text the SM typed into a per-cue's
+  // lyrics box into an ordered array of {h, t} lines -- h true marks a
+  // section heading, detected either by wrapping a line in [Brackets] or
+  // writing a short line in ALL CAPS -- then draws whichever of the 4
+  // layouts is chosen into an already-mounted skeleton. This exact block
+  // also lives in template.html -- if you change the logic here, copy the
+  // same change over there too, and vice versa, so both surfaces always
+  // agree on where "line 12" is and how headings are detected. The Crew
+  // page never parses its own lyrics text though -- it renders the
+  // already-parsed lyricsLines array the broadcast payload carries, so
+  // parseLyricsLines below exists here only for parity/future use.
+  function parseLyricsLines(raw){
+    var out = [];
+    (raw || '').split(/\r\n|\r|\n/).forEach(function(line){
+      var t = line.replace(/^\s+|\s+$/g, '');
+      if(!t) return;
+      var isHeading = false;
+      var bm = t.match(/^\[(.+)\]$/);
+      if(bm){ t = bm[1].replace(/^\s+|\s+$/g, ''); isHeading = true; }
+      else if(t.length <= 24 && t === t.toUpperCase() && /[A-Z]/.test(t)){ isHeading = true; }
+      out.push({ h: isHeading, t: t });
+    });
+    return out;
+  }
+  function autocueClampIdx(lines, i){
+    if(!lines || !lines.length) return 0;
+    return Math.max(0, Math.min(lines.length - 1, i));
+  }
+  function autocueSkeletonHTML(layoutId){
+    if(layoutId === 'l3'){
+      return '<div class="ac-col"><div class="ac-col-lines"></div><div class="ac-rail"></div></div><div class="ac-counter"></div>';
+    }
+    return '<div class="ac-line ac-prev"></div><div class="ac-line ac-cur"></div><div class="ac-line ac-next"></div>';
+  }
+  function autocueSetLine(lineEl, line){
+    if(!lineEl) return;
+    if(!line){ lineEl.textContent = ''; lineEl.classList.add('ac-empty'); lineEl.classList.remove('ac-heading'); return; }
+    lineEl.classList.remove('ac-empty');
+    lineEl.classList.toggle('ac-heading', !!line.h);
+    lineEl.textContent = line.t;
+  }
+  function autocueRenderInto(root, layoutId, lines, idx){
+    if(!root) return;
+    idx = autocueClampIdx(lines, idx);
+    if(layoutId === 'l3'){
+      var wrap = root.querySelector('.ac-col-lines');
+      if(!wrap) return;
+      wrap.innerHTML = '';
+      var span = 3;
+      for(var d = -span; d <= span; d++){
+        var line = lines[idx + d];
+        var div = document.createElement('div');
+        div.className = 'ac-col-line';
+        if(!line){ div.classList.add('ac-empty'); wrap.appendChild(div); continue; }
+        div.textContent = line.t;
+        if(line.h) div.classList.add('ac-heading');
+        if(d === 0){ div.classList.add('ac-current'); div.style.opacity = 1; }
+        else { div.style.opacity = Math.max(0.16, 1 - Math.abs(d) * 0.2); }
+        wrap.appendChild(div);
+      }
+      var counter = root.parentElement ? root.parentElement.querySelector('.ac-counter') : null;
+      if(counter) counter.textContent = lines.length ? ('Line ' + (idx + 1) + ' / ' + lines.length) : '';
+      var rail = root.querySelector('.ac-rail');
+      if(rail){
+        rail.innerHTML = '';
+        var frag = document.createDocumentFragment();
+        lines.forEach(function(_, i2){
+          var dot = document.createElement('span');
+          dot.className = 'ac-dot' + (i2 === idx ? ' ac-dot-active' : '');
+          frag.appendChild(dot);
+        });
+        rail.appendChild(frag);
+      }
+      return;
+    }
+    autocueSetLine(root.querySelector('.ac-prev'), lines[idx - 1]);
+    autocueSetLine(root.querySelector('.ac-cur'), lines[idx]);
+    autocueSetLine(root.querySelector('.ac-next'), lines[idx + 1]);
+  }
+  // ===== SYNC BLOCK END: autocueLyrics =====
+
   // Same 0..1 "how much of the loaded time is left" fraction the Stage
   // Manager's own progress bar uses (null when there's nothing to gauge
   // against -- Count Up with no allocated-time target set).
@@ -1899,6 +2053,109 @@
     el.nextLine.style.display = 'block';
   }
 
+  // Builds the inner markup for whichever autocue layout is mounted in
+  // #autocuePanel -- only rebuilt when the layout choice actually changes,
+  // so Layout 1's collapse state survives repeated per-second render()
+  // calls. Mirrors presenterAutocueSkeletonHTML() in template.html.
+  function crewAutocueSkeletonHTML(layoutId){
+    if(layoutId === 'l1'){
+      return '<div class="ac-strip" id="acStrip"><span id="acStripNow"></span><span class="ac-chev" id="acChev">Show &#9662;</span></div>'+
+             '<div class="ac-body ac-collapsed" id="acBody"><div class="ac-window">'+autocueSkeletonHTML('l1')+'</div></div>';
+    }
+    if(layoutId === 'l3'){
+      return '<div class="ac-label">Autocue</div>' + autocueSkeletonHTML('l3');
+    }
+    if(layoutId === 'l4'){
+      return '<div class="ac-giant">' + autocueSkeletonHTML('l1').replace(/ac-line/g, 'ac-line ac-side') + '</div>';
+    }
+    return '<div class="ac-label">Autocue</div><div class="ac-window">'+autocueSkeletonHTML('l2')+'</div>';
+  }
+
+  // Keeps --voicebar-h in sync with the Crew Talk bar's ACTUAL rendered
+  // height (fixed-size voice controls + whatever the Autocue panel adds
+  // below them), so everything else docked off that same variable -- the
+  // progress bar, the chat/groups toggle buttons, #stage's own reserved
+  // bottom padding -- stays correctly positioned above it without each
+  // needing its own copy of this logic.
+  function syncVoiceBarHeight(){
+    if(!el.voiceBar) return;
+    var h = el.voiceBar.getBoundingClientRect().height;
+    if(h > 0) document.documentElement.style.setProperty('--voicebar-h', Math.ceil(h) + 'px');
+  }
+
+  // Read-only follower of the Stage Manager's Autocue Operator panel: draws
+  // whichever line lastPayload.lyricsIdx points to, in whichever layout was
+  // chosen for this song, under Push-to-Talk -- same shared layout as the
+  // performer's Extended Display (Erik chose one layout for both screens,
+  // picked per song rather than show-wide).
+  // "Focus on lyrics" -- a per-device opt-in (remembered via localStorage,
+  // NOT driven by the Stage Manager's broadcast) that any crew/viewer screen
+  // can switch on for itself to get the same corner-timer treatment the
+  // Extended Display always applies automatically in Full Takeover. Off by
+  // default, and independent of whatever layout the SM picked for this song.
+  var acFocusOn = !!loadJSON('sm_crew_ac_focus', false);
+  function applyAcFocus(){
+    el.stage.classList.toggle('ac-focus-active', acFocusOn);
+    if(el.acFocusBtn) el.acFocusBtn.classList.toggle('active', acFocusOn);
+  }
+  if(el.acFocusBtn){
+    el.acFocusBtn.addEventListener('click', function(){
+      acFocusOn = !acFocusOn;
+      saveJSON('sm_crew_ac_focus', acFocusOn);
+      applyAcFocus();
+    });
+  }
+
+  function renderAutocueCrew(){
+    var panel = el.autocuePanel;
+    if(!panel) return;
+    var on = !!(lastPayload && lastPayload.lyricsOn && lastPayload.lyricsLines && lastPayload.lyricsLines.length);
+    if(!on){
+      panel.hidden = true;
+      panel.removeAttribute('data-layout');
+      el.stage.classList.remove('ac-focus-active');
+      syncVoiceBarHeight();
+      return;
+    }
+    panel.hidden = false;
+    if(el.acFocusBtn) el.acFocusBtn.hidden = false;
+    applyAcFocus();
+    var layoutId = lastPayload.lyricsLayout || 'l2';
+    if(panel.getAttribute('data-layout') !== layoutId){
+      el.acContent.innerHTML = crewAutocueSkeletonHTML(layoutId);
+      panel.className = 'ac-' + layoutId;
+      panel.setAttribute('data-layout', layoutId);
+      if(layoutId === 'l1'){
+        var strip = document.getElementById('acStrip');
+        if(strip){
+          strip.addEventListener('click', function(){
+            var body = document.getElementById('acBody');
+            var chev = document.getElementById('acChev');
+            var open = !body.classList.contains('ac-collapsed');
+            body.classList.toggle('ac-collapsed', open);
+            if(chev) chev.innerHTML = open ? 'Show &#9662;' : 'Hide &#9652;';
+            syncVoiceBarHeight();
+          });
+        }
+      }
+    }
+
+    var lines = lastPayload.lyricsLines;
+    var idx = autocueClampIdx(lines, lastPayload.lyricsIdx || 0);
+    if(layoutId === 'l1'){
+      var stripNow = document.getElementById('acStripNow');
+      if(stripNow) stripNow.innerHTML = '&#9834; Autocue &mdash; <b>' + escapeHtml(lastPayload.actName || '') + '</b>';
+      autocueRenderInto(panel.querySelector('.ac-window'), 'l1', lines, idx);
+    } else if(layoutId === 'l3'){
+      autocueRenderInto(panel.querySelector('.ac-col'), 'l3', lines, idx);
+    } else if(layoutId === 'l4'){
+      autocueRenderInto(panel.querySelector('.ac-giant'), 'l1', lines, idx);
+    } else {
+      autocueRenderInto(panel.querySelector('.ac-window'), 'l2', lines, idx);
+    }
+    syncVoiceBarHeight();
+  }
+
   function render(){
     if(!haveSettings()) return;
     updateCompactMode();
@@ -1920,6 +2177,7 @@
       el.stage.classList.remove('alarm');
       el.showLabel.textContent = '';
       if(el.progressFill) el.progressFill.style.width = '0%';
+      renderAutocueCrew();
       return;
     }
 
@@ -1957,6 +2215,7 @@
         el.messageSubTimeWrap.style.display = 'none';
       }
       if(el.progressFill) el.progressFill.style.width = '0%';
+      renderAutocueCrew();
       return;
     }
 
@@ -2050,6 +2309,7 @@
     fitOverflow(el.countdown, hasCurrent ? 0.46 : 0.55);
     updateNextLine();
     fitOverflow(el.nextLine, 0.15);
+    renderAutocueCrew();
   }
 
   // Re-fit text immediately on rotation/resize instead of waiting for the next
